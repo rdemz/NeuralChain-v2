@@ -1,76 +1,77 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use std::time::Duration;
-use std::path::Path;
-use tempfile::tempdir;
-use neuralchain::storage::OptimizedStorage;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use neuralchain::neural_pow::NeuralPoW;
+use neuralchain::blockchain::Blockchain;
 use neuralchain::block::Block;
-use neuralchain::transaction::Transaction;
-use neuralchain::transaction::{TransactionType, SignatureScheme};
 
-fn storage_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("StorageOperations");
+fn neural_pow_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group("NeuralPoWOperations");
     group.measurement_time(Duration::from_secs(10));
     
-    // Créer un répertoire temporaire pour les tests
-    let temp_dir = tempdir().unwrap();
-    let db_path = temp_dir.path().join("test_db");
+    // Setup - utilisons le runtime Tokio pour les tests
+    let rt = tokio::runtime::Runtime::new().unwrap();
     
-    // Initialiser le stockage
-    let storage = OptimizedStorage::new(db_path.to_str().unwrap()).unwrap();
-    
-    // Préparer des données de test
-    let block = Block::genesis();
-    
-    // Benchmark pour l'écriture de blocs
-    group.bench_function("save_block", |b| {
-        b.iter(|| {
-            black_box(storage.save_block(&block).unwrap())
-        })
-    });
-    
-    // Benchmark pour la lecture de blocs
-    group.bench_function("get_block", |b| {
-        // S'assurer que le bloc est sauvegardé
-        storage.save_block(&block).unwrap();
+    rt.block_on(async {
+        let blockchain = Arc::new(Mutex::new(Blockchain::new_empty()));
+        let pow_system = NeuralPoW::new(blockchain.clone());
         
-        b.iter(|| {
-            black_box(storage.get_block(&block.hash).unwrap())
-        })
-    });
-    
-    // Benchmark pour la lecture de blocs par hauteur
-    group.bench_function("get_block_by_height", |b| {
-        b.iter(|| {
-            black_box(storage.get_block_by_height(0).unwrap())
-        })
-    });
-    
-    // Benchmark pour la gestion des soldes de compte
-    let test_account = [1u8; 32];
-    group.bench_function("update_account_balance", |b| {
-        b.iter(|| {
-            black_box(storage.update_account_balance(&test_account, 1000).unwrap())
-        })
-    });
-    
-    group.bench_function("get_account_balance", |b| {
-        // S'assurer que le solde est initialisé
-        storage.update_account_balance(&test_account, 1000).unwrap();
+        // Créer un bloc de test
+        let test_block = Block::genesis();
+        let test_hash = test_block.hash;
+        let test_difficulty = 1;
         
-        b.iter(|| {
-            black_box(storage.get_account_balance(&test_account).unwrap())
-        })
-    });
-    
-    // Benchmark pour les opérations de vidange
-    group.bench_function("flush", |b| {
-        b.iter(|| {
-            black_box(storage.flush().unwrap())
-        })
+        // Benchmark pour le calcul de hash PoW
+        group.bench_function("compute_pow_hash", |b| {
+            b.iter(|| {
+                rt.block_on(async {
+                    black_box(pow_system.compute_pow_hash(&test_hash, 12345).await)
+                })
+            })
+        });
+        
+        // Benchmark pour la vérification du PoW
+        group.bench_function("verify_pow", |b| {
+            b.iter(|| {
+                rt.block_on(async {
+                    black_box(pow_system.verify_pow(&test_hash, 12345, test_difficulty).await)
+                })
+            })
+        });
+        
+        // Benchmark pour le mining
+        group.bench_function("mine_block_limited", |b| {
+            b.iter(|| {
+                rt.block_on(async {
+                    // Limiter à 1000 itérations pour le benchmark
+                    black_box(pow_system.mine_block_limited(&test_block, 1000).await)
+                })
+            })
+        });
+        
+        // Benchmark pour l'ajustement des poids neuronaux
+        group.bench_function("adjust_network_weights", |b| {
+            b.iter(|| {
+                rt.block_on(async {
+                    black_box(pow_system.adjust_network_weights().await)
+                })
+            })
+        });
+        
+        // Benchmark pour l'analyse des modèles de réseau
+        group.bench_function("analyze_network_patterns", |b| {
+            b.iter(|| {
+                rt.block_on(async {
+                    let blockchain_guard = blockchain.lock().await;
+                    black_box(pow_system.analyze_network_patterns(&*blockchain_guard).await)
+                })
+            })
+        });
     });
     
     group.finish();
 }
 
-criterion_group!(benches, storage_benchmark);
+criterion_group!(benches, neural_pow_benchmark);
 criterion_main!(benches);
