@@ -596,4 +596,362 @@ impl DisputeResolutionSystem {
             challenger,
             challenged,
             reason,
+            evidence,
+            status: DisputeStatus::Open,
+            created_at: Utc::now(),
+            resolved_at: None,
+        };
+        
+        self.active_disputes.insert(dispute_id, dispute);
+        self.dispute_voters.insert(dispute_id, HashMap::new());
+        
+        dispute_id
+    }
+    
+    // Enregistrer un vote dans une dispute
+    pub async fn register_vote(&self, dispute_id: DisputeId, voter: ProviderId, vote: bool) -> Result<(), OracleError> {
+        // Vérifier que la dispute existe
+        if !self.active_disputes.contains_key(&dispute_id) {
+            return Err(OracleError::ConsensusError("Dispute inconnue".to_string()));
+        }
+        
+        let dispute = self.active_disputes.get(&dispute_id).unwrap();
+        
+        // Vérifier que la dispute est encore ouverte
+        if !matches!(dispute.status, DisputeStatus::Open | DisputeStatus::Voting) {
+            return Err(OracleError::ConsensusError("La dispute est déjà résolue".to_string()));
+        }
+        
+        // Enregistrer le vote
+        if let Some(mut voters) = self.dispute_voters.get_mut(&dispute_id) {
+            voters.insert(voter, vote);
+        } else {
+            let mut voters = HashMap::new();
+            voters.insert(voter, vote);
+            self.dispute_voters.insert(dispute_id, voters);
+        }
+        
+        // Mettre à jour le statut de la dispute si nécessaire
+        let mut dispute = self.active_disputes.get_mut(&dispute_id).unwrap();
+        dispute.status = DisputeStatus::Voting;
+        
+        // Vérifier s'il y a assez de votes pour résoudre la dispute
+        self.check_dispute_resolution(dispute_id).await;
+        
+        Ok(())
+    }
+    
+    // Vérifier si une dispute peut être résolue
+    async fn check_dispute_resolution(&self, dispute_id: DisputeId) {
+        if let Some(voters) = self.dispute_voters.get(&dispute_id) {
+            // Minimum 5 votes pour résoudre
+            if voters.len() < 5 {
+                return;
+            }
             
+            // Compter les votes
+            let total_votes = voters.len();
+            let positive_votes = voters.values().filter(|&&v| v).count();
+            let negative_votes = total_votes - positive_votes;
+            
+            // Seuil de 66% pour résoudre
+            let threshold = (total_votes as f64 * 0.66).ceil() as usize;
+            
+            let outcome = if positive_votes >= threshold {
+                DisputeOutcome::ChallengeSucceeded
+            } else if negative_votes >= threshold {
+                DisputeOutcome::ChallengeFailed
+            } else {
+                // Pas assez de votes dans une direction
+                return;
+            };
+            
+            // Résoudre la dispute
+            if let Some(mut dispute) = self.active_disputes.get_mut(&dispute_id) {
+                dispute.status = DisputeStatus::Resolved(outcome.clone());
+                dispute.resolved_at = Some(Utc::now());
+                
+                // Enregistrer la résolution
+                let resolution = DisputeResolution {
+                    dispute_id,
+                    outcome,
+                    resolution_time: Utc::now(),
+                    voter_count: total_votes,
+                };
+                
+                self.dispute_resolutions.push_back(resolution);
+                
+                // Limiter la taille de l'historique
+                while self.dispute_resolutions.len() > 1000 {
+                    self.dispute_resolutions.pop_front();
+                }
+            }
+        }
+    }
+    
+    // Obtenir les disputes actives
+    pub fn get_active_disputes(&self) -> Vec<Dispute> {
+        self.active_disputes
+            .iter()
+            .filter(|d| !matches!(d.status, DisputeStatus::Resolved(_) | DisputeStatus::Cancelled))
+            .map(|d| d.clone())
+            .collect()
+    }
+    
+    // Obtenir l'historique des résolutions
+    pub fn get_dispute_resolutions(&self, limit: usize) -> Vec<DisputeResolution> {
+        self.dispute_resolutions
+            .iter()
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+}
+
+// Mécanisme de consensus basé sur le seuil et la réputation
+pub struct ThresholdConsensus {
+    submission_buffer: Arc<Mutex<HashMap<OracleFeedId, Vec<OracleSubmission>>>>,
+    reputation_tracker: Arc<OracleReputationTracker>,
+    aggregation_strategies: HashMap<OracleDataTypeId, Box<dyn AggregationStrategy>>,
+}
+
+impl ThresholdConsensus {
+    pub fn new(reputation_tracker: Arc<OracleReputationTracker>) -> Self {
+        Self {
+            submission_buffer: Arc::new(Mutex::new(HashMap::new())),
+            reputation_tracker,
+            aggregation_strategies: HashMap::new(),
+        }
+    }
+    
+    pub fn add_strategy(&mut self, data_type: &str, strategy: Box<dyn AggregationStrategy>) {
+        self.aggregation_strategies.insert(data_type.to_string(), strategy);
+    }
+    
+    async fn get_aggregation_strategy(&self, data_type_id: &str) -> Option<&Box<dyn AggregationStrategy>> {
+        self.aggregation_strategies.get(data_type_id)
+    }
+}
+
+// Mise en œuvre d'un algorithme de consensus
+#[async_trait]
+impl OracleConsensus for ThresholdConsensus {
+    async fn process_submission(&self, submission: OracleSubmission) -> Result<ConsensusResult, OracleError> {
+        // Ajouter la soumission au buffer
+        let mut buffer = self.submission_buffer.lock().await;
+        let submissions = buffer
+            .entry(submission.feed_id)
+            .or_insert_with(Vec::new);
+            
+        submissions.push(submission.clone());
+        
+        // Récupérer les informations sur le flux
+        // (ceci supposerait une fonction pour accéder à la configuration du flux)
+        let feed_config = get_feed_config(submission.feed_id).await?;
+        
+        // Si nous avons assez de soumissions, essayer d'atteindre un consensus
+        if submissions.len() >= feed_config.min_providers {
+            // Grouper les soumissions par type de données et valeur
+            let mut data_groups: HashMap<DataFingerprint, Vec<OracleSubmission>> = HashMap::new();
+            
+            for sub in submissions.iter() {
+                let fingerprint = calculate_data_fingerprint(&sub.data);
+                data_groups.entry(fingerprint)
+                    .or_insert_with(Vec::new)
+                    .push(sub.clone());
+            }
+            
+            // Trouver le groupe avec le plus de poids (basé sur la réputation)
+            let mut best_group = None;
+            let mut best_weight = 0.0;
+            
+            for (_, group) in data_groups {
+                let group_weight: f64 = group.iter()
+                    .map(|sub| self.reputation_tracker.get_reputation(sub.provider_id))
+                    .sum();
+                    
+                if group_weight > best_weight {
+                    best_weight = group_weight;
+                    best_group = Some(group);
+                }
+            }
+            
+            // Si nous avons un groupe majoritaire
+            if let Some(consensus_group) = best_group {
+                let total_weight: f64 = submissions.iter()
+                    .map(|sub| self.reputation_tracker.get_reputation(sub.provider_id))
+                    .sum();
+                    
+                let consensus_weight: f64 = consensus_group.iter()
+                    .map(|sub| self.reputation_tracker.get_reputation(sub.provider_id))
+                    .sum();
+                    
+                let consensus_ratio = consensus_weight / total_weight;
+                
+                if consensus_ratio >= feed_config.threshold {
+                    // Consensus atteint! Agréger les données
+                    let strategy = self.get_aggregation_strategy(&feed_config.data_type).await
+                        .ok_or_else(|| OracleError::UnsupportedDataType)?;
+                    
+                    let aggregated = strategy.aggregate(&consensus_group).await?;
+                    
+                    // Identifier les contributeurs et les valeurs aberrantes
+                    let contributing_providers: Vec<ProviderId> = consensus_group
+                        .iter()
+                        .map(|sub| sub.provider_id)
+                        .collect();
+                        
+                    let outlier_providers: Vec<ProviderId> = submissions
+                        .iter()
+                        .filter(|sub| !contributing_providers.contains(&sub.provider_id))
+                        .map(|sub| sub.provider_id)
+                        .collect();
+                        
+                    // Vider le buffer
+                    buffer.remove(&submission.feed_id);
+                    
+                    return Ok(ConsensusResult {
+                        consensus_reached: true,
+                        aggregated_data: aggregated,
+                        contributing_providers,
+                        outlier_providers,
+                    });
+                }
+            }
+        }
+        
+        // Pas encore de consensus
+        Ok(ConsensusResult {
+            consensus_reached: false,
+            aggregated_data: submission.data,
+            contributing_providers: vec![submission.provider_id],
+            outlier_providers: vec![],
+        })
+    }
+}
+
+// Stratégie d'agrégation médiane pour les données de prix
+pub struct MedianPriceStrategy;
+
+#[async_trait]
+impl AggregationStrategy for MedianPriceStrategy {
+    async fn aggregate(&self, submissions: &[OracleSubmission]) -> Result<OracleDataType, OracleError> {
+        // Extraire les données de prix
+        let mut prices = Vec::new();
+        for submission in submissions {
+            if let OracleDataType::PriceData(price_data) = &submission.data {
+                prices.push((price_data.clone(), submission.timestamp));
+            } else {
+                return Err(OracleError::UnsupportedDataType);
+            }
+        }
+        
+        if prices.is_empty() {
+            return Err(OracleError::NoDataAvailable);
+        }
+        
+        // Trier les prix
+        prices.sort_by(|a, b| a.0.price.cmp(&b.0.price));
+        
+        // Sélectionner la médiane
+        let median = if prices.len() % 2 == 1 {
+            prices[prices.len() / 2].0.clone()
+        } else {
+            // Pour un nombre pair, moyenne des deux médianes
+            let mid1 = &prices[prices.len() / 2 - 1].0;
+            let mid2 = &prices[prices.len() / 2].0;
+            
+            let avg_price = (mid1.price + mid2.price) / Decimal::from(2);
+            
+            PriceOracleData {
+                base_asset: mid1.base_asset.clone(),
+                quote_asset: mid1.quote_asset.clone(),
+                price: avg_price,
+                volume_24h: mid1.volume_24h.or(mid2.volume_24h),
+                timestamp: Utc::now(),
+            }
+        };
+        
+        Ok(OracleDataType::PriceData(median))
+    }
+    
+    fn is_outlier(&self, submission: &OracleSubmission, others: &[OracleSubmission]) -> bool {
+        // Extraire toutes les données de prix
+        let mut prices = Vec::new();
+        
+        for other in others {
+            if let OracleDataType::PriceData(price_data) = &other.data {
+                prices.push(price_data.price);
+            }
+        }
+        
+        if prices.is_empty() {
+            return false;
+        }
+        
+        if let OracleDataType::PriceData(submission_price) = &submission.data {
+            // Calculer la médiane
+            prices.sort();
+            let median = if prices.len() % 2 == 1 {
+                prices[prices.len() / 2]
+            } else {
+                (prices[prices.len() / 2 - 1] + prices[prices.len() / 2]) / Decimal::from(2)
+            };
+            
+            // Calculer l'écart-type (approximativement)
+            let mean = prices.iter().sum::<Decimal>() / Decimal::from(prices.len());
+            let variance_sum = prices.iter()
+                .map(|&p| {
+                    let diff = p - mean;
+                    diff * diff
+                })
+                .sum::<Decimal>();
+            
+            let std_dev = (variance_sum / Decimal::from(prices.len())).sqrt().unwrap_or(Decimal::ONE);
+            
+            // Un prix est considéré comme aberrant s'il s'écarte de plus de 2 écart-types de la médiane
+            let deviation = (submission_price.price - median).abs();
+            let max_allowed_deviation = std_dev * Decimal::from(2);
+            
+            deviation > max_allowed_deviation
+        } else {
+            false
+        }
+    }
+}
+
+// Fonctions auxiliaires (placeholders)
+async fn get_feed_config(_feed_id: OracleFeedId) -> Result<OracleFeedConfig, OracleError> {
+    // Dans une implémentation réelle, récupérerait la configuration depuis le stockage
+    Ok(OracleFeedConfig {
+        name: "Sample Feed".to_string(),
+        description: "Sample price feed".to_string(),
+        data_type: "price".to_string(),
+        providers: vec![],
+        min_providers: 3,
+        update_interval: Duration::seconds(60),
+        aggregation_strategy: AggregationStrategyType::Median,
+        threshold: 0.66,
+    })
+}
+
+// Génère une empreinte pour comparer les données
+type DataFingerprint = u64;
+
+fn calculate_data_fingerprint(data: &OracleDataType) -> DataFingerprint {
+    // Dans une implémentation réelle, utiliserait un hash adapté au type de données
+    match data {
+        OracleDataType::PriceData(price_data) => {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            price_data.base_asset.hash(&mut hasher);
+            price_data.quote_asset.hash(&mut hasher);
+            // Arrondir le prix pour tolérer de petites variations
+            let rounded_price = (price_data.price * Decimal::new(100, 0)).trunc() / Decimal::new(100, 0);
+            format!("{}", rounded_price).hash(&mut hasher);
+            std::hash::Hasher::finish(&hasher)
+        },
+        // Autres types...
+        _ => 0,
+    }
+}
