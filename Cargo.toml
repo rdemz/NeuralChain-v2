@@ -97,7 +97,6 @@ prost-build = "0.11"
 tonic-build = "0.9"
 
 [dev-dependencies]
-criterion = "0.4"
 proptest = "1.2"
 rstest = "0.17"
 tempfile = "3.6"
