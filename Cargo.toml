@@ -2,105 +2,64 @@
 name = "neuralchain"
 version = "0.1.0"
 edition = "2021"
-authors = ["NeuralChain Team"]
-description = "A high-performance blockchain with neural network-based consensus"
-repository = "https://github.com/neuralchain/core"
-license = "MIT"
-rust-version = "1.71"
+authors = ["Équipe NeuralChain"]
+description = "Une blockchain innovante avec un système PoW neuronal adaptatif"
+readme = "README.md"
+repository = "https://github.com/neuralchain/neuralchain"
+license = "MIT OR Apache-2.0"
+keywords = ["blockchain", "cryptocurrency", "neural-network", "consensus", "defi"]
+categories = ["cryptography", "finance", "network-programming"]
+
+[dependencies]
+# Dépendances fondamentales
+tokio = { version = "1.28", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Cryptographie et sérialisation
+sha2 = "0.10"
+ed25519-dalek = "2.0"
+k256 = { version = "0.13", features = ["ecdsa"] }
+rand = "0.8"
+hex = "0.4"
+bincode = "1.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Stockage et base de données
+rocksdb = "0.21"
+lmdb-rs = "0.7"
+
+# Réseau P2P 
+libp2p = { version = "0.52", features = ["tokio", "noise", "yamux", "gossipsub", "kad", "identify"] }
+warp = "0.3"
+uuid = { version = "1.3", features = ["v4", "serde"] }
+
+# Utilitaires
+thiserror = "1.0"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+num_cpus = "1.15"
+parking_lot = "0.12"
+
+# Machine learning (pour le PoW neuronal)
+ndarray = "0.15"
+smartcore = "0.3"
+
+[dev-dependencies]
+tokio-test = "0.4"
+proptest = "1.1"
+mockall = "0.11"
+test-log = "0.2"
 
 [profile.release]
-lto = "fat"
+lto = true
 codegen-units = 1
 opt-level = 3
 panic = "abort"
-strip = true
-overflow-checks = false
 
-[dependencies]
-# Cryptographie et hachage
-sha2 = "0.10"
-ed25519-dalek = { version = "1.0.1", features = ["serde"] }
-rand = "0.8"
-crypto-bigint = "0.5"
-blake3 = "1.3"
-ark-ff = "0.4"
-ark-ec = "0.4"
-schnorrkel = "0.10"
-ring = "0.16"
-bs58 = "0.4"
-
-# Structures de données
-hashbrown = { version = "0.14", features = ["rayon"] }
-ahash = "0.8"
-dashmap = "5.4"
-priority-queue = "1.3"
-im = "15.1"
-bitvec = "1.0"
-
-# Parallélisme et asynchrone
-tokio = { version = "1.28", features = ["full", "tracing"] }
-futures = "0.3"
-rayon = "1.7"
-parking_lot = "0.12"
-spin_sleep = "1.1"
-crossbeam = "0.8"
-num_cpus = "1.15"
-
-# Réseau et API
-hyper = { version = "0.14", features = ["full"] }
-axum = { version = "0.6", features = ["headers"] }
-tonic = { version = "0.9", features = ["tls"] }
-tower = "0.4"
-quinn = "0.10"
-libp2p = { version = "0.52", features = ["tcp", "dns", "websocket", "noise", "mplex"] }
-warp = "0.3"
-bytes = "1.4"
-
-# Sérialisation et formats
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
-postcard = { version = "1.0", features = ["use-std"] }
-hex = "0.4"
-base64 = "0.21"
-prost = "0.11"
-
-# Base de données et stockage
-rocksdb = { version = "0.21", features = ["multi-threaded-cf"] }
-redb = "1.0"
-sled = "0.34"
-
-# Monitoring et métriques
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-metrics = "0.21"
-metrics-exporter-prometheus = { version = "0.12", features = ["http-listener"] }
-opentelemetry = { version = "0.19", features = ["metrics", "rt-tokio"] }
-mimalloc = { version = "0.1", default-features = false }
-
-# EVM et compatibilité Ethereum
-ethers = { version = "2.0", features = ["abigen", "ws"] }
-evm = { version = "0.37", features = ["tracing", "with-serde"] }
-ethabi = "18.0"
-
-# Utilitaires
-uuid = { version = "1.3", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-rust_decimal = "1.29"
-thiserror = "1.0"
-anyhow = "1.0"
-once_cell = "1.17"
-strum = { version = "0.25", features = ["derive"] }
-itertools = "0.11"
-
-[build-dependencies]
-prost-build = "0.11"
-tonic-build = "0.9"
-
-[dev-dependencies]
-proptest = "1.2"
-rstest = "0.17"
-tempfile = "3.6"
-mockall = "0.11"
-test-log = "0.2"
-wiremock = "0.5"
-
+[profile.dev]
+opt-level = 0
+debug = true
