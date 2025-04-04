@@ -1,303 +1,286 @@
-use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant};
-use crossbeam::channel::{self, Receiver, Sender};
-use parking_lot::Mutex;
-use rayon::prelude::*;
-use spin_sleep::sleep;
-
-use crate::block::{Block, BlockHeader};
 use crate::blockchain::{Blockchain, BlockchainState};
+use crate::block::Block;
+use crate::neural_pow::NeuralPoW;
+use crate::transaction::Transaction;
 use crate::consensus::ConsensusEngine;
-use crate::mempool::OptimizedMempool;
-use crate::monitoring::BLOCK_MINING_TIME;
-use crate::neural_pow::{NeuralPoW, PoWResult};
+use anyhow::{Result, Context};
+use std::sync::Arc;
+use tokio::sync::{Mutex, mpsc, broadcast};
+use tokio::time::{sleep, Duration};
+use tracing::{info, warn, error, debug};
 
-// Configuration du mining
-pub struct MiningConfig {
-    pub interval: Duration,        // Intervalle entre tentatives de mining
-    pub batch_size: usize,         // Taille du lot de nonces à essayer
-    pub difficulty_adjustment: f64, // Facteur d'ajustement dynamique de difficulté
-    pub thread_priority: i32,      // Priorité du thread de mining
+/// Configuration pour le mineur continu
+pub struct ContinuousMinerConfig {
+    /// Intervalle entre les tentatives de minage en millisecondes
+    pub mining_interval_ms: u64,
+    /// Nombre maximum d'itérations de minage par tentative
+    pub max_iterations_per_attempt: u64,
+    /// Taille maximale du pool de transactions
+    pub max_tx_pool_size: usize,
+    /// Nombre maximum de transactions par bloc
+    pub max_tx_per_block: usize,
 }
 
-// Structure pour gérer une file de blocs minés
-pub struct BlockQueue {
-    queue: Mutex<Vec<Block>>,
-    capacity: usize,
-}
-
-impl BlockQueue {
-    pub fn new(capacity: usize) -> Self {
+impl Default for ContinuousMinerConfig {
+    fn default() -> Self {
         Self {
-            queue: Mutex::new(Vec::with_capacity(capacity)),
-            capacity,
+            mining_interval_ms: 100,
+            max_iterations_per_attempt: 10_000,
+            max_tx_pool_size: 10_000,
+            max_tx_per_block: 1_000,
         }
-    }
-    
-    // Ajouter un bloc à la file
-    pub fn push(&self, block: Block) -> bool {
-        let mut queue = self.queue.lock();
-        
-        if queue.len() < self.capacity {
-            queue.push(block);
-            true
-        } else {
-            false
-        }
-    }
-    
-    // Récupérer tous les blocs de la file
-    pub fn drain(&self) -> Vec<Block> {
-        let mut queue = self.queue.lock();
-        std::mem::take(&mut *queue)
-    }
-    
-    // Récupérer le nombre de blocs dans la file
-    pub fn len(&self) -> usize {
-        self.queue.lock().len()
     }
 }
 
-// Lancement du mining continu dans un thread dédié
-pub fn launch_continuous_mining(
-    block_queue: Arc<BlockQueue>,
-    config: MiningConfig,
-    pow_system: Arc<Mutex<NeuralPoW>>,
-    blockchain: Arc<tokio::sync::Mutex<Blockchain>>,
-    mempool: Arc<OptimizedMempool>,
+/// Mineur continu pour NeuralChain
+pub struct ContinuousMiner {
+    blockchain: Arc<Mutex<Blockchain>>,
+    pow_system: Arc<NeuralPoW>,
     consensus_engine: Arc<ConsensusEngine>,
-) {
-    // Créer des canaux pour communiquer entre les threads
-    let (tx, rx) = channel::bounded(1);
+    config: ContinuousMinerConfig,
+    transaction_pool: Vec<Transaction>,
+    new_block_tx: mpsc::Sender<Block>,
+    stop_mining_rx: broadcast::Receiver<()>,
+    stop_mining_tx: broadcast::Sender<()>,
+}
+
+impl ContinuousMiner {
+    /// Crée une nouvelle instance du mineur continu
+    pub fn new(
+        blockchain: Arc<Mutex<Blockchain>>,
+        pow_system: Arc<NeuralPoW>,
+        consensus_engine: Arc<ConsensusEngine>,
+        config: ContinuousMinerConfig,
+    ) -> Self {
+        let (new_block_tx, _) = mpsc::channel(100);
+        let (stop_mining_tx, stop_mining_rx) = broadcast::channel(16);
+        
+        Self {
+            blockchain,
+            pow_system,
+            consensus_engine,
+            config,
+            transaction_pool: Vec::new(),
+            new_block_tx,
+            stop_mining_rx,
+            stop_mining_tx,
+        }
+    }
     
-    // Lancer le thread de mining
-    thread::Builder::new()
-        .name("continuous-mining".to_string())
-        .spawn(move || {
-            // Configurer la priorité du thread
-            #[cfg(unix)]
-            {
-                use std::os::unix::thread::JoinHandleExt;
-                let native_id = unsafe { libc::pthread_self() };
-                let mut sched_param: libc::sched_param = unsafe { std::mem::zeroed() };
-                sched_param.sched_priority = config.thread_priority;
-                unsafe {
-                    libc::pthread_setschedparam(
-                        native_id,
-                        libc::SCHED_RR,
-                        &sched_param,
-                    );
+    /// Retourne un clone de l'émetteur de nouveaux blocs
+    pub fn get_new_block_sender(&self) -> mpsc::Sender<Block> {
+        self.new_block_tx.clone()
+    }
+    
+    /// Retourne un récepteur pour arrêter le minage
+    pub fn get_stop_mining_receiver(&self) -> broadcast::Receiver<()> {
+        self.stop_mining_tx.subscribe()
+    }
+    
+    /// Ajoute une transaction au pool
+    pub fn add_transaction(&mut self, transaction: Transaction) -> Result<bool> {
+        // Vérifier si le pool est plein
+        if self.transaction_pool.len() >= self.config.max_tx_pool_size {
+            return Ok(false);
+        }
+        
+        // Vérifier si la transaction est valide
+        if !transaction.verify_signature()? {
+            return Ok(false);
+        }
+        
+        // Ajouter au pool
+        self.transaction_pool.push(transaction);
+        
+        Ok(true)
+    }
+    
+    /// Démarre la boucle de minage
+    pub async fn start_mining(&mut self) -> Result<()> {
+        info!("Démarrage de la boucle de minage continue");
+        
+        let mut interval = tokio::time::interval(Duration::from_millis(self.config.mining_interval_ms));
+        
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    // Vérifier l'état de la blockchain
+                    let blockchain_state = {
+                        let blockchain = self.blockchain.lock().await;
+                        blockchain.get_state()
+                    };
+                    
+                    if blockchain_state != BlockchainState::Active {
+                        debug!("Blockchain non active, attente pour le minage");
+                        continue;
+                    }
+                    
+                    // Mine un bloc si possible
+                    if let Err(e) = self.attempt_mining().await {
+                        error!("Erreur pendant le minage : {}", e);
+                    }
+                }
+                _ = self.stop_mining_rx.recv() => {
+                    info!("Signal d'arrêt reçu, fin du minage");
+                    break;
                 }
             }
-            
-            continuous_mining_loop(
-                block_queue,
-                config,
-                pow_system,
-                blockchain,
-                mempool,
-                consensus_engine,
-                rx,
-            );
-        })
-        .expect("Échec de la création du thread de mining");
+        }
         
-    // Le canal d'arrêt peut être utilisé plus tard pour arrêter proprement le mining
-    let _ = tx;
+        Ok(())
+    }
+    
+    /// Effectue une tentative de minage
+    async fn attempt_mining(&mut self) -> Result<Option<Block>> {
+        // Sélectionner les transactions pour le prochain bloc
+        let selected_transactions = self.select_transactions();
+        
+        // Préparer le prochain bloc
+        let next_block = self.prepare_next_block(selected_transactions).await?;
+        
+        // Tenter de miner le bloc
+        let mining_result = self.pow_system
+            .mine_block_limited(&next_block, self.config.max_iterations_per_attempt)
+            .await?;
+            
+        // Si le minage a réussi
+        if let Some((nonce, pow_hash)) = mining_result {
+            // Créer le bloc final avec le nonce et le hash trouvés
+            let mut mined_block = next_block.clone();
+            mined_block.nonce = nonce;
+            mined_block.hash = pow_hash;
+            
+            // Vérifier le bloc miné
+            if self.consensus_engine.verify_block(&mined_block).await? {
+                // Ajouter le bloc à la blockchain
+                {
+                    let mut blockchain = self.blockchain.lock().await;
+                    blockchain.add_block(mined_block.clone())?;
+                }
+                
+                info!("Nouveau bloc miné avec succès : hauteur={}, hash={:?}",
+                      mined_block.height, &mined_block.hash[0..8]);
+                      
+                // Supprimer les transactions incluses du pool
+                self.remove_mined_transactions(&mined_block.transactions);
+                
+                // Signaler le nouveau bloc
+                if let Err(e) = self.new_block_tx.send(mined_block.clone()).await {
+                    warn!("Impossible d'envoyer le nouveau bloc : {}", e);
+                }
+                
+                return Ok(Some(mined_block));
+            } else {
+                warn!("Le bloc miné n'a pas passé la validation");
+            }
+        }
+        
+        Ok(None)
+    }
+    
+    /// Prépare le prochain bloc à miner
+    async fn prepare_next_block(&self, transactions: Vec<Transaction>) -> Result<Block> {
+        let blockchain = self.blockchain.lock().await;
+        let latest_block = blockchain.get_latest_block()
+            .context("La blockchain n'a pas de bloc le plus récent")?;
+            
+        // Relâcher le verrou
+        drop(blockchain);
+        
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+            
+        // Utiliser le moteur de consensus pour créer un nouveau bloc
+        let next_block = self.consensus_engine.create_new_block(
+            latest_block.hash.clone(),
+            latest_block.height + 1,
+            timestamp,
+            transactions,
+            0, // Le nonce sera trouvé pendant le minage
+        ).await?;
+        
+        Ok(next_block)
+    }
+    
+    /// Sélectionne les transactions à inclure dans le prochain bloc
+    fn select_transactions(&self) -> Vec<Transaction> {
+        // Pour la simplicité, prenons simplement les premières transactions
+        self.transaction_pool.iter()
+            .take(self.config.max_tx_per_block)
+            .cloned()
+            .collect()
+    }
+    
+    /// Supprime les transactions minées du pool
+    fn remove_mined_transactions(&mut self, mined_transactions: &[Transaction]) {
+        if mined_transactions.is_empty() {
+            return;
+        }
+        
+        // Créer un ensemble des hashes des transactions minées
+        let mined_tx_hashes: std::collections::HashSet<&Vec<u8>> = mined_transactions
+            .iter()
+            .map(|tx| &tx.hash)
+            .collect();
+            
+        // Filtrer le pool pour ne garder que les transactions non minées
+        self.transaction_pool.retain(|tx| !mined_tx_hashes.contains(&tx.hash));
+    }
+    
+    /// Arrête le minage
+    pub fn stop_mining(&self) {
+        if let Err(e) = self.stop_mining_tx.send(()) {
+            warn!("Impossible d'envoyer le signal d'arrêt : {}", e);
+        }
+    }
 }
 
-fn continuous_mining_loop(
-    block_queue: Arc<BlockQueue>,
-    config: MiningConfig,
-    pow_system: Arc<Mutex<NeuralPoW>>,
-    blockchain: Arc<tokio::sync::Mutex<Blockchain>>,
-    mempool: Arc<OptimizedMempool>,
-    consensus_engine: Arc<ConsensusEngine>,
-    rx: Receiver<()>,
-) {
-    // Compteur de blocs minés
-    let mut blocks_mined = 0;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transaction::TransactionType;
     
-    loop {
-        // Vérifier si on a reçu un signal d'arrêt
-        if rx.try_recv().is_ok() {
-            tracing::info!("Arrêt du thread de mining");
-            break;
-        }
+    #[tokio::test]
+    async fn test_transaction_pool() {
+        // Créer les composants nécessaires
+        let blockchain = Arc::new(Mutex::new(Blockchain::new()));
+        let pow_system = Arc::new(NeuralPoW::new(blockchain.clone()));
+        let consensus_engine = Arc::new(ConsensusEngine::new(
+            blockchain.clone(),
+            pow_system.clone(),
+            Default::default(),
+        ));
         
-        // Limiter la taille de la file d'attente des blocs
-        if block_queue.len() >= block_queue.capacity / 2 {
-            tracing::debug!("La file de blocs est à moitié pleine, pause du mining");
-            sleep(Duration::from_millis(1000));
-            continue;
-        }
-        
-        // Mining en continu
-        let mining_result = mine_next_block(
-            &blockchain,
-            &mempool,
-            &pow_system,
-            &consensus_engine,
-            config.batch_size,
+        let mut miner = ContinuousMiner::new(
+            blockchain.clone(),
+            pow_system.clone(),
+            consensus_engine.clone(),
+            Default::default(),
         );
         
-        match mining_result {
-            Ok(Some(block)) => {
-                tracing::info!(
-                    "Bloc miné avec succès: hauteur={}, hash={}, txs={}, difficulté={}",
-                    block.height,
-                    hex::encode(&block.hash),
-                    block.transactions.len(),
-                    block.difficulty,
-                );
-                
-                // Ajouter le bloc à la file
-                if !block_queue.push(block) {
-                    tracing::warn!("File de blocs pleine, bloc perdu");
-                }
-                
-                blocks_mined += 1;
-                
-                // Ajuster dynamiquement le délai entre tentatives
-                let delay = if blocks_mined % 10 == 0 {
-                    // Tous les 10 blocs, prendre une pause plus longue
-                    config.interval * 5
-                } else {
-                    // Pause normale
-                    config.interval
-                };
-                
-                sleep(delay);
-            }
-            Ok(None) => {
-                // Pas de bloc miné cette fois-ci
-                tracing::trace!("Tentative de mining infructueuse");
-                sleep(config.interval);
-            }
-            Err(e) => {
-                tracing::error!("Erreur lors du mining: {}", e);
-                sleep(config.interval * 2); // Pause plus longue en cas d'erreur
-            }
-        }
-    }
-}
-
-// Fonction pour miner le prochain bloc
-fn mine_next_block(
-    blockchain: &Arc<tokio::sync::Mutex<Blockchain>>,
-    mempool: &Arc<OptimizedMempool>,
-    pow_system: &Arc<Mutex<NeuralPoW>>,
-    consensus_engine: &Arc<ConsensusEngine>,
-    batch_size: usize,
-) -> Result<Option<Block>, anyhow::Error> {
-    let start_time = Instant::now();
-    
-    // Acquérir l'état actuel de la blockchain
-    let blockchain_guard = match tokio::runtime::Handle::try_current() {
-        Ok(handle) => handle.block_on(async { blockchain.lock().await }),
-        Err(_) => {
-            // Créer un nouveau runtime si nécessaire
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(async { blockchain.lock().await })
-        }
-    };
-    
-    // Récupérer des infos de base
-    let height = blockchain_guard.height() + 1;
-    let parent_hash = blockchain_guard.last_block_hash();
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
-    
-    // Récupérer le mineur (notre adresse)
-    let miner = consensus_engine.get_miner_address();
-    
-    // Récupérer les transactions du mempool
-    let transactions = mempool.get_transactions_for_block(1000, 1_000_000);
-    
-    // Créer l'en-tête du bloc à miner
-    let header = BlockHeader {
-        version: 1,
-        parent_hash,
-        timestamp,
-        merkle_root: [0; 32], // Sera calculé plus tard
-        height,
-        nonce: 0,
-        miner: miner.clone(),
-        difficulty: 0, // Sera défini plus tard
-    };
-    
-    // Construire l'état de la blockchain pour le PoW
-    let state = BlockchainState {
-        mempool_size: mempool.size(),
-        average_fee_last_100_blocks: blockchain_guard.average_fee_last_n_blocks(100),
-        max_fee_ever: blockchain_guard.max_fee_ever(),
-        hashrate_estimate: blockchain_guard.estimate_hashrate(),
-        network_activity_score: 0.7, // Exemple
-        node_distribution_entropy: 0.8, // Exemple
-        avg_block_time_last_100: blockchain_guard.average_block_time(100),
-        avg_transactions_per_block_last_100: blockchain_guard.average_transactions_per_block(100),
-        difficulty_adjustment_factor: 1.0,
-        average_transaction_value: blockchain_guard.average_transaction_value(100),
-        max_transaction_value_ever: blockchain_guard.max_transaction_value_ever(),
-        fee_to_reward_ratio: blockchain_guard.fee_to_reward_ratio(100),
-        utxo_set_size: blockchain_guard.utxo_set_size(),
-    };
-    
-    // Libérer la blockchain pour ne pas bloquer d'autres processus pendant le mining
-    drop(blockchain_guard);
-    
-    // Calculer la target pour le mining
-    let header_bytes = bincode::serialize(&header)?;
-    let target = pow_system.lock().calculate_target(&header, &state);
-    
-    // Miner le bloc avec la parallélisation
-    let pow_result = pow_system.lock().mine_block(
-        &header_bytes, 
-        &target, 
-        batch_size as u64
-    );
-    
-    match pow_result {
-        Some(pow) => {
-            // Bloc miné avec succès!
-            let elapsed = start_time.elapsed();
-            tracing::debug!(
-                "Bloc miné en {}.{:03}s, nonce={}", 
-                elapsed.as_secs(), 
-                elapsed.subsec_millis(),
-                pow.nonce
-            );
-            
-            BLOCK_MINING_TIME.record(elapsed.as_millis() as f64);
-            
-            // Récupérer à nouveau la blockchain pour créer le bloc final
-            let blockchain_guard = match tokio::runtime::Handle::try_current() {
-                Ok(handle) => handle.block_on(async { blockchain.lock().await }),
-                Err(_) => {
-                    let rt = tokio::runtime::Runtime::new()?;
-                    rt.block_on(async { blockchain.lock().await })
-                }
-            };
-            
-            // Construire le bloc final
-            let block = blockchain_guard.create_block(
-                height,
-                parent_hash,
-                timestamp,
-                pow.nonce,
-                miner,
-                transactions,
-                pow.target.clone(),
-            )?;
-            
-            Ok(Some(block))
-        }
-        None => {
-            // Pas de solution trouvée dans ce lot de nonces
-            tracing::trace!("Pas de solution trouvée avec batch_size={}", batch_size);
-            Ok(None)
-        }
+        // Créer une transaction de test
+        let tx = Transaction::new(
+            TransactionType::Transfer,
+            vec![1; 32],
+            Some(vec![2; 32]),
+            100,
+            10,
+            1,
+            vec![],
+        );
+        
+        // Ajouter au pool
+        assert!(miner.add_transaction(tx.clone()).unwrap());
+        
+        // Vérifier que la transaction est dans le pool
+        assert_eq!(miner.transaction_pool.len(), 1);
+        
+        // Simuler un minage
+        miner.remove_mined_transactions(&[tx]);
+        
+        // Vérifier que la transaction a été supprimée
+        assert_eq!(miner.transaction_pool.len(), 0);
     }
 }
