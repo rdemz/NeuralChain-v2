@@ -514,4 +514,400 @@ impl DeFiSystem {
     }
     
     // Ajouter une source de prix à l'oracle
-    pub fn add_price_source
+    pub fn add_price_source(
+        &self,
+        oracle_id: Uuid,
+        token_a: TokenId,
+        token_b: TokenId,
+        source: PriceSource
+    ) -> Result<(), DeFiError> {
+        if let Some(oracle) = self.oracle_providers.get(&oracle_id) {
+            oracle.add_price_source(token_a, token_b, source);
+            Ok(())
+        } else {
+            Err(DeFiError::OracleError("Oracle inconnu".to_string()))
+        }
+    }
+    
+    // Obtenir le dernier prix connu
+    pub fn get_latest_price(
+        &self,
+        oracle_id: Uuid,
+        token_a: TokenId,
+        token_b: TokenId
+    ) -> Result<PriceData, DeFiError> {
+        if let Some(oracle) = self.oracle_providers.get(&oracle_id) {
+            oracle.get_latest_price(token_a, token_b)
+        } else {
+            Err(DeFiError::OracleError("Oracle inconnu".to_string()))
+        }
+    }
+    
+    // Obtenir plusieurs prix en une seule opération
+    pub fn get_price_batch(
+        &self,
+        oracle_id: Uuid,
+        pairs: &[(TokenId, TokenId)]
+    ) -> Result<HashMap<(TokenId, TokenId), PriceData>, DeFiError> {
+        if let Some(oracle) = self.oracle_providers.get(&oracle_id) {
+            let mut result = HashMap::new();
+            
+            for &(token_a, token_b) in pairs {
+                if let Ok(price) = oracle.get_latest_price(token_a, token_b) {
+                    result.insert((token_a, token_b), price);
+                }
+            }
+            
+            if result.is_empty() {
+                Err(DeFiError::OracleError("Aucun prix disponible".to_string()))
+            } else {
+                Ok(result)
+            }
+        } else {
+            Err(DeFiError::OracleError("Oracle inconnu".to_string()))
+        }
+    }
+    
+    // ====== MÉTHODES UTILITAIRES ======
+    
+    // Obtenir une paire existante
+    fn get_pair(&self, token_a: TokenId, token_b: TokenId) -> Result<PoolPair, DeFiError> {
+        // Normaliser l'ordre des tokens
+        let pair = if token_a < token_b {
+            PoolPair { token_a, token_b }
+        } else {
+            PoolPair { token_a: token_b, token_b: token_a }
+        };
+        
+        if self.liquidity_pools.contains_key(&pair) {
+            Ok(pair)
+        } else {
+            Err(DeFiError::UnsupportedPair)
+        }
+    }
+    
+    // Obtenir ou créer une paire
+    fn get_or_create_pair(&mut self, token_a: TokenId, token_b: TokenId) -> Result<PoolPair, DeFiError> {
+        // Normaliser l'ordre des tokens
+        let pair = if token_a < token_b {
+            PoolPair { token_a, token_b }
+        } else {
+            PoolPair { token_a: token_b, token_b: token_a }
+        };
+        
+        if !self.liquidity_pools.contains_key(&pair) {
+            let pool_id = Uuid::new_v4();
+            let fee_percent = Decimal::new(3, 3); // 0.3% par défaut
+            let pool = LiquidityPool::new(pool_id, pair.clone(), fee_percent);
+            self.liquidity_pools.insert(pair.clone(), pool);
+        }
+        
+        Ok(pair)
+    }
+    
+    // Obtenir tous les pools de liquidité
+    pub fn get_all_liquidity_pools(&self) -> Vec<(PoolPair, Decimal, Decimal)> {
+        self.liquidity_pools
+            .iter()
+            .map(|(pair, pool)| (pair.clone(), pool.reserve_a, pool.reserve_b))
+            .collect()
+    }
+    
+    // Obtenir le prix actuel d'un token par rapport à un autre
+    pub fn get_current_price(&self, token_a: TokenId, token_b: TokenId) -> Result<Decimal, DeFiError> {
+        let pair = self.get_pair(token_a, token_b)?;
+        let pool = self.liquidity_pools.get(&pair).ok_or(DeFiError::UnsupportedPair)?;
+        
+        if token_a == pair.token_a {
+            // Prix direct: combien de token_b pour 1 token_a
+            if pool.reserve_a == Decimal::ZERO {
+                return Err(DeFiError::InsufficientLiquidity);
+            }
+            Ok(pool.reserve_b / pool.reserve_a)
+        } else {
+            // Prix inverse: combien de token_a pour 1 token_b
+            if pool.reserve_b == Decimal::ZERO {
+                return Err(DeFiError::InsufficientLiquidity);
+            }
+            Ok(pool.reserve_a / pool.reserve_b)
+        }
+    }
+}
+
+// Méthodes de LiquidityPool
+impl LiquidityPool {
+    pub fn new(id: PoolId, pair: PoolPair, fee_percent: Decimal) -> Self {
+        Self {
+            id,
+            pair,
+            reserve_a: Decimal::ZERO,
+            reserve_b: Decimal::ZERO,
+            fee_percent,
+            lp_tokens: HashMap::new(),
+            total_lp_supply: Decimal::ZERO,
+            price_history: VecDeque::with_capacity(1000),
+            created_at: Utc::now(),
+            last_swap: None,
+        }
+    }
+    
+    // Ajouter de la liquidité
+    pub fn add_liquidity(&mut self, provider: Address, amount_a: Decimal, amount_b: Decimal) -> Result<Decimal, DeFiError> {
+        if self.reserve_a.is_zero() && self.reserve_b.is_zero() {
+            // Premier ajout de liquidité
+            self.reserve_a += amount_a;
+            self.reserve_b += amount_b;
+            
+            // Frapper des LP tokens
+            let lp_tokens = Decimal::sqrt(amount_a * amount_b).ok_or(DeFiError::ImbalancedLiquidity)?;
+            self.lp_tokens.insert(provider, lp_tokens);
+            self.total_lp_supply = lp_tokens;
+            
+            Ok(lp_tokens)
+        } else {
+            // Vérifier le ratio correct
+            let ratio = self.reserve_b / self.reserve_a;
+            let expected_b = amount_a * ratio;
+            
+            if (expected_b - amount_b).abs() / expected_b > Decimal::new(1, 2) { // 1% de tolérance
+                return Err(DeFiError::ImbalancedLiquidity);
+            }
+            
+            self.reserve_a += amount_a;
+            self.reserve_b += amount_b;
+            
+            // Calculer les nouveaux LP tokens
+            let proportion = amount_a / self.reserve_a;
+            let lp_tokens_to_mint = self.total_lp_supply * proportion;
+            
+            // Mettre à jour l'état
+            *self.lp_tokens.entry(provider).or_insert(Decimal::ZERO) += lp_tokens_to_mint;
+            self.total_lp_supply += lp_tokens_to_mint;
+            
+            Ok(lp_tokens_to_mint)
+        }
+    }
+    
+    // Retirer de la liquidité
+    pub fn remove_liquidity(&mut self, provider: &Address, lp_amount: Decimal) -> Result<(Decimal, Decimal), DeFiError> {
+        let provider_lp = self.lp_tokens.get(provider).copied().unwrap_or(Decimal::ZERO);
+        if lp_amount > provider_lp {
+            return Err(DeFiError::InsufficientLPTokens);
+        }
+        
+        // Calculer les montants à rendre
+        let proportion = lp_amount / self.total_lp_supply;
+        let amount_a = self.reserve_a * proportion;
+        let amount_b = self.reserve_b * proportion;
+        
+        // Mettre à jour l'état
+        if let Some(lp_balance) = self.lp_tokens.get_mut(provider) {
+            *lp_balance -= lp_amount;
+            if lp_balance.is_zero() {
+                self.lp_tokens.remove(provider);
+            }
+        }
+        
+        self.reserve_a -= amount_a;
+        self.reserve_b -= amount_b;
+        self.total_lp_supply -= lp_amount;
+        
+        Ok((amount_a, amount_b))
+    }
+    
+    // Exécuter un swap
+    pub fn swap(&mut self, token_in: TokenId, amount_in: Decimal) -> Result<Decimal, DeFiError> {
+        if token_in != self.pair.token_a && token_in != self.pair.token_b {
+            return Err(DeFiError::InvalidToken);
+        }
+        
+        let (reserve_in, reserve_out) = if token_in == self.pair.token_a {
+            (self.reserve_a, self.reserve_b)
+        } else {
+            (self.reserve_b, self.reserve_a)
+        };
+        
+        // Calcul du montant de sortie basé sur la formule x * y = k
+        let fee_amount = amount_in * self.fee_percent / Decimal::new(100, 0);
+        let amount_in_with_fee = amount_in - fee_amount;
+        
+        // Formule: amount_out = (reserve_out * amount_in) / (reserve_in + amount_in)
+        let amount_out = (reserve_out * amount_in_with_fee) / (reserve_in + amount_in_with_fee);
+        
+        if amount_out <= Decimal::ZERO {
+            return Err(DeFiError::InsufficientOutputAmount);
+        }
+        
+        // Mise à jour des réserves
+        if token_in == self.pair.token_a {
+            self.reserve_a += amount_in;
+            self.reserve_b -= amount_out;
+        } else {
+            self.reserve_b += amount_in;
+            self.reserve_a -= amount_out;
+        }
+        
+        // Enregistrement du prix et du dernier swap
+        self.record_price(Utc::now(), self.reserve_b / self.reserve_a);
+        self.last_swap = Some(Utc::now());
+        
+        Ok(amount_out)
+    }
+    
+    // Enregistre un point de prix
+    fn record_price(&mut self, timestamp: DateTime<Utc>, price: Decimal) {
+        self.price_history.push_back(PricePoint { 
+            timestamp, 
+            price, 
+            volume: None 
+        });
+        
+        // Garder seulement les 1000 derniers points
+        if self.price_history.len() > 1000 {
+            self.price_history.pop_front();
+        }
+    }
+    
+    // Récupère l'historique des prix
+    pub fn get_price_history(&self, limit: usize) -> Vec<PricePoint> {
+        self.price_history
+            .iter()
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+}
+
+// Méthodes pour OracleProvider
+impl OracleProvider {
+    pub fn new(update_interval: chrono::Duration) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            supported_pairs: HashMap::new(),
+            latest_prices: DashMap::new(),
+            update_interval,
+        }
+    }
+    
+    // Ajout d'une source de prix
+    pub fn add_price_source(&self, token_a: TokenId, token_b: TokenId, source: PriceSource) {
+        self.supported_pairs.insert((token_a, token_b), source);
+    }
+    
+    // Mise à jour des prix depuis les sources externes
+    pub async fn update_prices(&self) -> Result<(), DeFiError> {
+        for ((token_a, token_b), source) in &self.supported_pairs {
+            match source {
+                PriceSource::CentralizedExchange { name, endpoint } => {
+                    // Appel API à l'échange centralisé
+                    match fetch_price_from_cex(endpoint, token_a, token_b).await {
+                        Ok(price) => {
+                            self.latest_prices.insert((*token_a, *token_b), PriceData {
+                                price,
+                                timestamp: Utc::now(),
+                                source: source.clone(),
+                            });
+                        },
+                        Err(e) => {
+                            return Err(DeFiError::OracleError(format!("Erreur de récupération du prix: {}", e)));
+                        }
+                    }
+                },
+                PriceSource::ChainlinkFeed { address, network } => {
+                    // Lecture du prix depuis Chainlink
+                    match read_chainlink_price(address, network).await {
+                        Ok(price) => {
+                            self.latest_prices.insert((*token_a, *token_b), PriceData {
+                                price,
+                                timestamp: Utc::now(),
+                                source: source.clone(),
+                            });
+                        },
+                        Err(e) => {
+                            return Err(DeFiError::OracleError(format!("Erreur Chainlink: {}", e)));
+                        }
+                    }
+                },
+                PriceSource::InternalAMM { pool_id } => {
+                    // Récupération du prix depuis un pool interne
+                    // Cette implémentation dépend du système DeFi
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    // Obtenir le dernier prix connu
+    pub fn get_latest_price(&self, token_a: TokenId, token_b: TokenId) -> Result<PriceData, DeFiError> {
+        if let Some(price_data) = self.latest_prices.get(&(token_a, token_b)) {
+            let age = Utc::now().signed_duration_since(price_data.timestamp);
+            
+            // Vérifier si le prix est périmé
+            if age > self.update_interval {
+                return Err(DeFiError::StalePrice);
+            }
+            
+            Ok(price_data.clone())
+        } else {
+            // Essayer l'inverse
+            if let Some(price_data) = self.latest_prices.get(&(token_b, token_a)) {
+                let age = Utc::now().signed_duration_since(price_data.timestamp);
+                
+                if age > self.update_interval {
+                    return Err(DeFiError::StalePrice);
+                }
+                
+                // Inverser le prix
+                let mut inverted_data = price_data.clone();
+                inverted_data.price = Decimal::ONE / inverted_data.price;
+                
+                Ok(inverted_data)
+            } else {
+                Err(DeFiError::UnsupportedPair)
+            }
+        }
+    }
+}
+
+// Fonction pour recalculer les taux de prêt
+fn recalculate_lending_rates(pool: &mut LendingPool) {
+    // Modèle basé sur l'utilisation
+    // Plus le pool est utilisé, plus les taux d'intérêt augmentent
+    
+    // Paramètres du modèle
+    let base_borrow_rate = Decimal::new(2, 2); // 2%
+    let slope1 = Decimal::new(10, 2); // 10%
+    let slope2 = Decimal::new(100, 2); // 100%
+    let optimal_utilization = Decimal::new(80, 2); // 80%
+    
+    if pool.utilization_rate <= optimal_utilization {
+        // Première partie de la courbe
+        pool.borrow_apy = base_borrow_rate + 
+            (slope1 * pool.utilization_rate / optimal_utilization);
+    } else {
+        // Deuxième partie de la courbe (pénalité)
+        let excess_utilization = pool.utilization_rate - optimal_utilization;
+        let max_excess = Decimal::ONE - optimal_utilization;
+        
+        pool.borrow_apy = base_borrow_rate + slope1 + 
+            (slope2 * excess_utilization / max_excess);
+    }
+    
+    // Le taux de fourniture est calculé à partir du taux d'emprunt
+    pool.supply_apy = pool.borrow_apy * pool.utilization_rate;
+}
+
+// Fonctions asynchrones pour les API externes
+async fn fetch_price_from_cex(endpoint: &str, _token_a: &TokenId, _token_b: &TokenId) -> Result<Decimal, String> {
+    // Implémentation à venir - pour l'instant retourne une valeur de test
+    // Cette fonction ferait normalement un appel HTTP à une API d'échange
+    Ok(Decimal::new(1234, 2)) // 12.34
+}
+
+async fn read_chainlink_price(address: &str, _network: &str) -> Result<Decimal, String> {
+    // Implémentation à venir - pour l'instant retourne une valeur de test
+    // Cette fonction ferait normalement un appel à un smart contract Chainlink
+    Ok(Decimal::new(5678, 2)) // 56.78
+}
