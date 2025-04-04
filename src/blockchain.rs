@@ -4,6 +4,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// État de la blockchain
+#[derive(Debug, Clone, PartialEq)]
+pub enum BlockchainState {
+    /// Synchronisation initiale en cours
+    Syncing,
+    /// Fonctionnement normal
+    Active,
+    /// État d'erreur
+    Error,
+}
+
 /// Structure principale de la blockchain
 pub struct Blockchain {
     /// Chaîne de blocs stockée par hash
@@ -14,6 +25,8 @@ pub struct Blockchain {
     latest_block_hash: Option<Vec<u8>>,
     /// Hauteur du bloc le plus récent
     latest_height: u64,
+    /// État actuel de la blockchain
+    state: BlockchainState,
 }
 
 impl Blockchain {
@@ -24,6 +37,7 @@ impl Blockchain {
             height_index: HashMap::new(),
             latest_block_hash: None,
             latest_height: 0,
+            state: BlockchainState::Syncing,
         }
     }
     
@@ -32,6 +46,7 @@ impl Blockchain {
         let mut blockchain = Self::new_empty();
         let genesis = Block::genesis();
         blockchain.add_block(genesis).expect("Le bloc de genèse devrait être valide");
+        blockchain.state = BlockchainState::Active;
         blockchain
     }
     
@@ -105,6 +120,16 @@ impl Blockchain {
         
         blocks
     }
+    
+    /// Obtient l'état actuel de la blockchain
+    pub fn get_state(&self) -> BlockchainState {
+        self.state.clone()
+    }
+    
+    /// Définit l'état de la blockchain
+    pub fn set_state(&mut self, state: BlockchainState) {
+        self.state = state;
+    }
 }
 
 #[cfg(test)]
@@ -115,6 +140,7 @@ mod tests {
     fn test_blockchain_creation() {
         let blockchain = Blockchain::new();
         assert_eq!(blockchain.get_current_height(), 0);
+        assert_eq!(blockchain.get_state(), BlockchainState::Active);
         
         // Vérifier que le bloc de genèse existe
         let genesis = blockchain.get_block_by_height(0);
@@ -146,5 +172,17 @@ mod tests {
         let retrieved_block = blockchain.get_block_by_height(1);
         assert!(retrieved_block.is_some());
         assert_eq!(retrieved_block.unwrap().hash, new_block.hash);
+    }
+    
+    #[test]
+    fn test_blockchain_state() {
+        let mut blockchain = Blockchain::new_empty();
+        assert_eq!(blockchain.get_state(), BlockchainState::Syncing);
+        
+        blockchain.set_state(BlockchainState::Active);
+        assert_eq!(blockchain.get_state(), BlockchainState::Active);
+        
+        blockchain.set_state(BlockchainState::Error);
+        assert_eq!(blockchain.get_state(), BlockchainState::Error);
     }
 }
