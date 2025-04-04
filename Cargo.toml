@@ -105,10 +105,3 @@ mockall = "0.11"
 test-log = "0.2"
 wiremock = "0.5"
 
-[[bench]]
-name = "consensus_benchmarks"
-harness = false
-
-[[bench]]
-name = "crypto_benchmarks"
-harness = false
