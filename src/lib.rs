@@ -1,3 +1,4 @@
+// Export des modules
 pub mod block;
 pub mod blockchain;
 pub mod continuous_mining;
@@ -6,8 +7,11 @@ pub mod transaction;
 pub mod utils;
 pub mod wallet;
 
-// Re-exporte les structures principales
+// Re-export des structures principales
 pub use block::Block;
-pub use blockchain::Blockchain;
-pub use continuous_mining::ContinuousMining;
+pub use blockchain::{Blockchain, BlockchainState};
+pub use transaction::{Transaction, TransactionType, SignatureScheme};
 pub use wallet::Wallet;
+
+// Re-export des macros
+pub use crate::bail;
