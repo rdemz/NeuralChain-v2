@@ -1,5 +1,5 @@
 use crate::block::Block;
-use anyhow::{Result, bail};
+use anyhow::Result;
 use std::collections::HashMap;
 
 /// État de la blockchain
@@ -55,12 +55,12 @@ impl Blockchain {
         
         // Vérifier si le bloc existe déjà
         if self.blocks.contains_key(&block_hash) {
-            bail!("Le bloc existe déjà dans la blockchain");
+            return Err(anyhow::anyhow!("Le bloc existe déjà dans la blockchain"));
         }
         
         // Vérifier la cohérence de la hauteur
         if block_height > 0 && !self.blocks.contains_key(&block.prev_hash) {
-            bail!("Le bloc parent n'existe pas dans la blockchain");
+            return Err(anyhow::anyhow!("Le bloc parent n'existe pas dans la blockchain"));
         }
         
         // Ajouter le bloc aux structures de données
@@ -183,15 +183,4 @@ mod tests {
         blockchain.set_state(BlockchainState::Error);
         assert_eq!(blockchain.get_state(), BlockchainState::Error);
     }
-}
-
-/// Macro utilitaire pour faciliter la définition d'erreurs
-#[macro_export]
-macro_rules! bail {
-    ($msg:expr) => {
-        return Err(anyhow::anyhow!($msg))
-    };
-    ($fmt:expr, $($arg:tt)*) => {
-        return Err(anyhow::anyhow!($fmt, $($arg)*))
-    };
 }
