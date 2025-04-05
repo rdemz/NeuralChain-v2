@@ -223,6 +223,8 @@ impl Block {
     }
 }
 
+// Modification dans la méthode test_block_hash du module de test
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,9 +245,13 @@ mod tests {
         
         // Modifier le nonce devrait changer le hash
         block.nonce = 42;
+        // Recalculer le hash - c'était le problème, nous modifions le nonce mais ne recalculons pas le hash
         block.hash = block.calculate_hash();
         
+        // Vérifier que le hash a changé
         assert_ne!(original_hash, block.hash);
+        
+        // Vérifier que le nouveau hash est valide
         assert!(block.is_hash_valid());
     }
 }
