@@ -138,22 +138,27 @@ impl Transaction {
             None => return Ok(false),
         };
         
-        // Reconstruire la signature
+        // Vérifier la longueur de la signature
         if signature_bytes.len() != 64 {
             return Ok(false);
         }
         
-        let signature = match Signature::from_bytes(signature_bytes.as_slice().try_into().unwrap_or(&[0; 64])) {
-            Ok(sig) => sig,
-            Err(_) => return Ok(false),
-        };
+        // Convertir la signature en tableau fixe
+        let mut sig_bytes = [0u8; 64];
+        sig_bytes.copy_from_slice(signature_bytes);
+        let signature = Signature::from_bytes(&sig_bytes);
         
-        // Reconstruire la clé publique
+        // Vérifier la longueur de la clé publique
         if self.sender.len() != 32 {
             return Ok(false);
         }
         
-        let verifying_key = match VerifyingKey::from_bytes(self.sender.as_slice().try_into().unwrap_or(&[0; 32])) {
+        // Convertir la clé publique en tableau fixe
+        let mut key_bytes = [0u8; 32];
+        key_bytes.copy_from_slice(&self.sender);
+        
+        // Reconstruire la clé publique
+        let verifying_key = match VerifyingKey::from_bytes(&key_bytes) {
             Ok(key) => key,
             Err(_) => return Ok(false),
         };
