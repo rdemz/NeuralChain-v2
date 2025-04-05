@@ -40,7 +40,7 @@ impl Wallet {
         
         // Calculer l'adresse (hash de la clé publique)
         let mut hasher = Sha256::new();
-        hasher.update(&verifying_key.to_bytes());
+        hasher.update(verifying_key.to_bytes()); // Clippy fix: removed unnecessary borrow
         let address = bytes_to_hex(&hasher.finalize()[0..20]); // Prendre les 20 premiers octets
         
         let keys = WalletKeys {
@@ -148,9 +148,9 @@ impl Wallet {
         
         let mut key_bytes = [0u8; 32];
         key_bytes.copy_from_slice(&private_key_bytes);
-        let signing_key = match SigningKey::from_bytes(&key_bytes) {
-            sig_key => sig_key,
-        };
+        
+        // Simplifier le match inutile (Clippy fix)
+        let signing_key = SigningKey::from_bytes(&key_bytes);
         
         // Définir le schéma de signature et signer
         tx.signature_scheme = SignatureScheme::Ed25519;
