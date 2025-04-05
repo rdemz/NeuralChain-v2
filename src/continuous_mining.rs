@@ -5,6 +5,7 @@ use anyhow::{Result, Context};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing;
 
 /// Structure pour gérer le minage continu
 pub struct ContinuousMining {
@@ -36,7 +37,7 @@ impl ContinuousMining {
     pub fn add_transaction(&mut self, transaction: Transaction) -> Result<()> {
         // Vérifier la signature de la transaction
         if let Ok(false) = transaction.verify_signature() {
-            bail!("Signature de transaction invalide");
+            return Err(anyhow::anyhow!("Signature de transaction invalide"));
         }
         
         // Ajouter à la mempool
@@ -135,7 +136,32 @@ impl ContinuousMining {
     }
 }
 
-/// Fonction utilitaire pour bail
-fn bail<T>(msg: &str) -> Result<T> {
-    Err(anyhow::anyhow!(msg))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transaction::{Transaction, TransactionType};
+    
+    // Ces tests nécessitent tokio
+    #[tokio::test]
+    async fn test_add_transaction() {
+        let blockchain = Arc::new(Mutex::new(Blockchain::new()));
+        let mut miner = ContinuousMining::new(blockchain, 1);
+        
+        // Créer un wallet pour signer une transaction
+        let mut wallet = crate::wallet::Wallet::new().unwrap();
+        let tx = wallet.create_transaction(
+            None,
+            100,
+            10,
+            TransactionType::Transfer,
+            vec![],
+        ).unwrap();
+        
+        // Ajouter la transaction à la mempool
+        let result = miner.add_transaction(tx);
+        assert!(result.is_ok());
+        
+        // Vérifier que la transaction a été ajoutée
+        assert_eq!(miner.get_mempool_size(), 1);
+    }
 }
