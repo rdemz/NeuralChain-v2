@@ -1,4 +1,4 @@
-use crate::transaction::{Transaction, TransactionType};
+use crate::transaction::Transaction;
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
