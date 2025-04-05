@@ -82,14 +82,14 @@ impl Block {
         // Structure à hacher: version + height + timestamp + prev_hash + merkle_root + difficulty + nonce
         let mut hasher = Sha256::new();
         
-        // Ajouter chaque composant au hash
-        hasher.update(&self.version.to_le_bytes());
-        hasher.update(&self.height.to_le_bytes());
-        hasher.update(&self.timestamp.to_le_bytes());
+        // Ajouter chaque composant au hash (Clippy fixes: removed unnecessary borrows)
+        hasher.update(self.version.to_le_bytes());
+        hasher.update(self.height.to_le_bytes());
+        hasher.update(self.timestamp.to_le_bytes());
         hasher.update(&self.prev_hash);
         hasher.update(&self.merkle_root);
-        hasher.update(&self.difficulty.to_le_bytes());
-        hasher.update(&self.nonce.to_le_bytes());
+        hasher.update(self.difficulty.to_le_bytes());
+        hasher.update(self.nonce.to_le_bytes());
         
         // Calculer le hash final
         hasher.finalize().to_vec()
