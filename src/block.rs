@@ -98,7 +98,11 @@ impl Block {
     /// Mine le bloc en cherchant un nonce valide
     pub fn mine(&mut self) -> Result<()> {
         // Valeur cible pour le minage (simplifiée)
-        let target = 1u128 << (128 - self.difficulty as u128);
+        let target = if self.difficulty == 0 {
+            u128::MAX // Si difficulté est 0, tous les hash sont valides
+        } else {
+            1u128 << (128 - self.difficulty as u128).min(127) // Limite à 127 pour éviter l'overflow
+        };
         
         while self.nonce < u64::MAX {
             // Calculer le hash avec le nonce actuel
@@ -131,7 +135,11 @@ impl Block {
         }
         
         // Valeur cible pour la difficulté
-        let target = 1u128 << (128 - self.difficulty as u128);
+        let target = if self.difficulty == 0 {
+            u128::MAX // Si difficulté est 0, tous les hash sont valides
+        } else {
+            1u128 << (128 - self.difficulty as u128).min(127) // Limite à 127 pour éviter l'overflow
+        };
         
         // Convertir les 16 premiers octets du hash en u128 pour comparaison
         let mut hash_value = 0u128;
@@ -245,7 +253,7 @@ mod tests {
             timestamp: 12345,
             prev_hash: vec![0; 32],
             merkle_root: vec![0; 32],
-            difficulty: 0, // Difficulté à zéro pour que tout hash soit valide
+            difficulty: 1, // Difficulté basse mais non nulle
             nonce: 0,
             transactions: vec![],
             hash: vec![],
