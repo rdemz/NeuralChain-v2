@@ -16,6 +16,9 @@ pub fn hex_to_bytes(hex_string: &str) -> Result<Vec<u8>> {
 
 /// Obtention du timestamp actuel en millisecondes
 pub fn current_timestamp_ms() -> u64 {
+    // Note: Cette conversion pourrait théoriquement causer un dépassement de capacité
+    // après plusieurs centaines d'années depuis UNIX_EPOCH. Pour les besoins pratiques
+    // de la blockchain, c'est acceptable.
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -113,5 +116,16 @@ mod tests {
         assert_eq!(format_bytes_size(500), "500 B");
         assert_eq!(format_bytes_size(1500), "1.46 KB");
         assert_eq!(format_bytes_size(1500000), "1.43 MB");
+    }
+    
+    #[test]
+    async fn test_measure_execution_time() {
+        let (result, duration) = measure_execution_time(|| async {
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            42
+        }).await;
+        
+        assert_eq!(result, 42);
+        assert!(duration >= 10, "La durée devrait être d'au moins 10ms");
     }
 }
