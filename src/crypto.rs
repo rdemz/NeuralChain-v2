@@ -72,7 +72,7 @@ pub fn double_sha256(data: &[u8]) -> Vec<u8> {
     let first_hash = hasher1.finalize();
     
     let mut hasher2 = Sha256::new();
-    hasher2.update(&first_hash);
+    hasher2.update(first_hash); // Clippy fix: removed unnecessary borrow
     hasher2.finalize().to_vec()
 }
 
