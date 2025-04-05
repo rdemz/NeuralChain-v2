@@ -1,6 +1,7 @@
 use sha2::{Sha256, Digest};
 use ed25519_dalek::{Keypair, Signer, Verifier, Signature};
 use anyhow::{Result, Context};
+use rand::rngs::OsRng;
 
 /// Calcule un hash SHA-256 des données
 pub fn hash(data: &[u8]) -> Vec<u8> {
@@ -23,12 +24,12 @@ pub fn verify_signature(
 ) -> Result<bool> {
     use ed25519_dalek::VerifyingKey;
     
+    // Correction: Gérer correctement les erreurs de conversion
     let public_key = VerifyingKey::from_bytes(public_key_bytes.try_into()
-        .context("Clé publique invalide")?)
-        .context("Impossible de créer la clé de vérification")?;
+        .context("Clé publique invalide")?)?;
     
     let signature = Signature::from_bytes(signature_bytes.try_into()
-        .context("Signature invalide")?);
+        .context("Signature invalide")?)?;
     
     match public_key.verify(data, &signature) {
         Ok(_) => Ok(true),
@@ -38,8 +39,6 @@ pub fn verify_signature(
 
 /// Génère une paire de clés Ed25519
 pub fn generate_keypair() -> Result<(Vec<u8>, Vec<u8>)> {
-    use rand::rngs::OsRng;
-    
     let mut csprng = OsRng;
     let keypair = Keypair::generate(&mut csprng);
     
@@ -72,7 +71,6 @@ pub fn derive_address(public_key: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::OsRng;
     
     #[test]
     fn test_hash() {
