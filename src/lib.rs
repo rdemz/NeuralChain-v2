@@ -4,6 +4,7 @@ pub mod blockchain;
 pub mod continuous_mining;
 pub mod crypto;
 pub mod transaction;
+pub mod cli;
 pub mod utils;
 pub mod wallet;
 
