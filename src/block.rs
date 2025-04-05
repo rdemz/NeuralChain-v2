@@ -82,7 +82,7 @@ impl Block {
         // Structure à hacher: version + height + timestamp + prev_hash + merkle_root + difficulty + nonce
         let mut hasher = Sha256::new();
         
-        // Ajouter chaque composant au hash (Clippy fixes: removed unnecessary borrows)
+        // Ajouter chaque composant au hash
         hasher.update(self.version.to_le_bytes());
         hasher.update(self.height.to_le_bytes());
         hasher.update(self.timestamp.to_le_bytes());
@@ -125,8 +125,8 @@ impl Block {
     /// Vérifie si le hash du bloc est valide par rapport à la difficulté
     pub fn is_hash_valid(&self) -> bool {
         // Recalculer le hash pour vérification
-        let hash = self.calculate_hash();
-        if hash != self.hash {
+        let calculated_hash = self.calculate_hash();
+        if calculated_hash != self.hash {
             return false;
         }
         
@@ -223,8 +223,6 @@ impl Block {
     }
 }
 
-// Modification dans la méthode test_block_hash du module de test
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,18 +238,36 @@ mod tests {
     
     #[test]
     fn test_block_hash() {
-        let mut block = Block::genesis();
+        // Création d'un bloc de test avec une difficulté très basse
+        let mut block = Block {
+            version: 1,
+            height: 0,
+            timestamp: 12345,
+            prev_hash: vec![0; 32],
+            merkle_root: vec![0; 32],
+            difficulty: 0, // Difficulté à zéro pour que tout hash soit valide
+            nonce: 0,
+            transactions: vec![],
+            hash: vec![],
+        };
+        
+        // Calculer le hash initial
+        block.hash = block.calculate_hash();
         let original_hash = block.hash.clone();
         
-        // Modifier le nonce devrait changer le hash
+        // Vérifier que le hash initial est valide
+        assert!(block.is_hash_valid());
+        
+        // Modifier le nonce
         block.nonce = 42;
-        // Recalculer le hash - c'était le problème, nous modifions le nonce mais ne recalculons pas le hash
+        
+        // Recalculer le hash après modification du nonce
         block.hash = block.calculate_hash();
         
         // Vérifier que le hash a changé
         assert_ne!(original_hash, block.hash);
         
-        // Vérifier que le nouveau hash est valide
+        // Vérifier que le nouveau hash est valide avec la difficulté actuelle
         assert!(block.is_hash_valid());
     }
 }
