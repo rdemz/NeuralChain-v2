@@ -1,7 +1,7 @@
-use crate::wallet::Transaction;
+use crate::transaction::{Transaction, TransactionType};
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
-use anyhow::{Result, Context};
+use anyhow::Result;
 
 /// Structure d'un bloc de la blockchain
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,8 +226,6 @@ impl Block {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wallet::{Transaction, TransactionType};
-    use std::time::{SystemTime, UNIX_EPOCH};
     
     #[test]
     fn test_genesis_block() {
