@@ -5,7 +5,6 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::fmt;
 
 /// Structure pour gérer le minage continu
 pub struct ContinuousMining {
