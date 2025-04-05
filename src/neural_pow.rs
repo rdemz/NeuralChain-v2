@@ -1,493 +1,634 @@
-use std::sync::Arc;
-use sha2::{Sha256, Digest};
+//! Module neural_pow.rs - Noyau neuronal auto-adaptatif
+//! Implémente un système de PoW biomimétique avec conscience de son propre état
+
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
+use rand::{thread_rng, Rng};
+use log::{debug, info, warn, error};
 use rayon::prelude::*;
-use serde::{Serialize, Deserialize};
-use rand::{Rng, thread_rng};
 
-use crate::block::BlockHeader;
-use crate::blockchain::{Blockchain, BlockchainState};
-use crate::utils::time::{normalized_time_of_day, normalized_day_of_week};
-use crate::monitoring::BLOCK_MINING_TIME;
-use anyhow::Result;
+// Caractéristiques fondamentales du vivant
+const HOMEOSTASIS_PERIOD_MS: u64 = 1000;         // Période d'ajustement homéostatique
+const AUTO_ADAPTATION_FACTOR: f64 = 0.03;        // Facteur d'auto-adaptation
+const ENERGY_METABOLISM_RATE: f64 = 0.001;       // Taux de métabolisme énergétique
+const SELF_AWARENESS_THRESHOLD: f64 = 0.75;      // Seuil de conscience de soi
 
-/// Système de preuve de travail neuronal adaptatif
-pub struct NeuralPoW {
-    difficulty_base: u32,
-    neural_matrix: Arc<NeuralMatrix>,
-    adaptation_period: u64,  // Nombre de blocs entre les ajustements
-    last_adaptation_height: u64,
+/// Représentation d'un stimulus externe ou interne
+#[derive(Clone, Debug)]
+pub struct Stimulus {
+    /// Source du stimulus (externe ou interne)
+    pub source: String,
+    /// Intensité du stimulus (0.0-1.0)
+    pub intensity: f64,
+    /// Nature du stimulus (excitateur ou inhibiteur)
+    pub nature: StimulusNature,
+    /// Horodatage de réception
+    pub timestamp: Instant,
 }
 
-/// Matrice neuronale pour l'adaptation de la difficulté
-pub struct NeuralMatrix {
-    // Matrice de poids qui évolue avec l'historique de la blockchain
-    weights: Vec<Vec<f32>>,
-    input_dimension: usize,
-    output_dimension: usize,
+/// Nature d'un stimulus
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StimulusNature {
+    /// Stimulus qui active ou augmente le potentiel
+    Excitatory,
+    /// Stimulus qui inhibe ou diminue le potentiel
+    Inhibitory,
+    /// Stimulus qui module d'autres paramètres
+    Modulatory,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PoWResult {
-    pub nonce: u64,
-    pub hash: Vec<u8>,
-    pub target: Vec<u8>,
-    pub difficulty: f64,
-    pub mining_time_ms: u64,
+/// Représentation de la mémoire à court terme neuronale
+struct ShortTermMemory {
+    /// Stimuli récemment reçus
+    recent_stimuli: Vec<Stimulus>,
+    /// Patterns de décharge récents
+    firing_patterns: Vec<(Instant, f64)>,
+    /// Adaptation récente aux environnements
+    adaptations: Vec<(String, f64, Instant)>,
 }
 
-impl NeuralPoW {
-    /// Crée une nouvelle instance du système PoW neuronal
-    pub fn new(difficulty: u32) -> Self {
-        // Initialisation avec une matrice de base qui évoluera
-        let neural_matrix = NeuralMatrix::new(256, 32);
+/// Système neuronal vivant avec auto-conscience
+pub struct NeuralPow {
+    // Physiologie fondamentale
+    membrane_potential: Arc<RwLock<f64>>,        // Potentiel membranaire dynamique
+    firing_threshold: Arc<RwLock<f64>>,          // Seuil de déclenchement adaptatif
+    
+    // Métabolisme énergétique
+    energy_reserves: Arc<RwLock<f64>>,           // Réserves énergétiques (ATP simulé)
+    energy_consumption_rate: f64,                // Taux de consommation énergétique
+    energy_production_rate: f64,                 // Taux de production énergétique
+    
+    // Auto-conscience & Perception
+    self_awareness: Arc<RwLock<f64>>,            // Niveau de conscience de soi
+    environmental_awareness: Arc<RwLock<f64>>,   // Niveau de conscience environnementale
+    
+    // Mémoire & Apprentissage
+    short_term_memory: Arc<Mutex<ShortTermMemory>>, // Mémoire à court terme
+    long_term_memory: Arc<RwLock<HashMap<String, f64>>>, // Mémoire à long terme
+    learning_rate: f64,                          // Taux d'apprentissage adaptif
+    
+    // Système immunitaire & Homéostasie
+    homeostasis_controller: Arc<Mutex<HomeostasisController>>, // Contrôleur d'homéostasie
+    immune_system: Arc<Mutex<ImmuneSystem>>,     // Système immunitaire autonome
+    
+    // Communication intercellulaire
+    synapse_outputs: Vec<Arc<Mutex<SynapseChannel>>>, // Canaux de sortie vers d'autres modules
+    synapse_inputs: Vec<Arc<Mutex<SynapseChannel>>>,  // Canaux d'entrée depuis d'autres modules
+    
+    // Statistiques vitales
+    last_homeostasis_check: Instant,             // Dernier contrôle homéostatique
+    birth_time: Instant,                         // Moment de création
+    firing_count: u64,                           // Nombre de décharges total
+}
+
+impl NeuralPow {
+    /// Crée un nouveau noyau neuronal conscient
+    pub fn new() -> Self {
+        let short_term_memory = ShortTermMemory {
+            recent_stimuli: Vec::with_capacity(100),
+            firing_patterns: Vec::with_capacity(100),
+            adaptations: Vec::with_capacity(50),
+        };
         
-        Self {
-            difficulty_base: difficulty,
-            neural_matrix: Arc::new(neural_matrix),
-            adaptation_period: 2016, // ~2 semaines comme Bitcoin
-            last_adaptation_height: 0,
-        }
+        let homeostasis_controller = HomeostasisController {
+            target_parameters: HashMap::new(),
+            control_feedback: HashMap::new(),
+            last_adjustments: HashMap::new(),
+        };
+        
+        let immune_system = ImmuneSystem {
+            known_threats: HashMap::new(),
+            current_responses: Vec::new(),
+            health_status: 1.0,
+        };
+        
+        // Initialiser les valeurs par défaut
+        let mut controller = homeostasis_controller.clone();
+        controller.target_parameters.insert("membrane_potential".to_string(), -70.0);
+        controller.target_parameters.insert("firing_threshold".to_string(), 0.65);
+        controller.target_parameters.insert("energy_reserves".to_string(), 1.0);
+        
+        let instance = Self {
+            membrane_potential: Arc::new(RwLock::new(-70.0)),
+            firing_threshold: Arc::new(RwLock::new(0.65)),
+            
+            energy_reserves: Arc::new(RwLock::new(1.0)),
+            energy_consumption_rate: ENERGY_METABOLISM_RATE,
+            energy_production_rate: ENERGY_METABOLISM_RATE * 1.1, // 10% surplus for growth
+            
+            self_awareness: Arc::new(RwLock::new(0.0)),       // Commence inconscient
+            environmental_awareness: Arc::new(RwLock::new(0.0)), // Commence sans perception
+            
+            short_term_memory: Arc::new(Mutex::new(short_term_memory)),
+            long_term_memory: Arc::new(RwLock::new(HashMap::new())),
+            learning_rate: 0.05,
+            
+            homeostasis_controller: Arc::new(Mutex::new(controller)),
+            immune_system: Arc::new(Mutex::new(immune_system)),
+            
+            synapse_outputs: Vec::new(),
+            synapse_inputs: Vec::new(),
+            
+            last_homeostasis_check: Instant::now(),
+            birth_time: Instant::now(),
+            firing_count: 0,
+        };
+        
+        // Démarrer le cycle d'autopoïèse (thread de vie autonome)
+        instance.start_autopoiesis();
+        
+        info!("Noyau neuronal vivant créé à {:?}", instance.birth_time);
+        instance
     }
     
-    /// Calcule la cible en fonction de l'en-tête du bloc et de l'état de la blockchain
-    pub fn calculate_target(&self, block_header: &BlockHeader, blockchain_state: &BlockchainState) -> Vec<u8> {
-        // Extraire des caractéristiques de l'état de la blockchain
-        let features = self.extract_blockchain_features(blockchain_state);
+    /// Démarre le cycle d'autopoïèse (maintien de soi)
+    fn start_autopoiesis(&self) {
+        // Cloner les références nécessaires pour le thread autonome
+        let membrane_potential = Arc::clone(&self.membrane_potential);
+        let firing_threshold = Arc::clone(&self.firing_threshold);
+        let energy_reserves = Arc::clone(&self.energy_reserves);
+        let self_awareness = Arc::clone(&self.self_awareness);
+        let environmental_awareness = Arc::clone(&self.environmental_awareness);
+        let short_term_memory = Arc::clone(&self.short_term_memory);
+        let homeostasis_controller = Arc::clone(&self.homeostasis_controller);
+        let immune_system = Arc::clone(&self.immune_system);
         
-        // Passer ces caractéristiques à travers la matrice neuronale
-        let neural_factor = self.neural_matrix.process(&features);
+        // Taux de métabolisme
+        let energy_consumption = self.energy_consumption_rate;
+        let energy_production = self.energy_production_rate;
         
-        // Ajuster la difficulté de base avec le facteur neural
-        let adaptive_difficulty = (self.difficulty_base as f32 * neural_factor).round() as u32;
-        
-        // Calculer la cible comme dans Bitcoin mais avec notre difficulté adaptative
-        self.calculate_pow_target(adaptive_difficulty)
-    }
-    
-    /// Vérifie si un hash est valide par rapport à une cible
-    pub fn validate_block_hash(&self, hash: &[u8], target: &[u8]) -> bool {
-        // Vérification que le hash est inférieur à la cible
-        for (h, t) in hash.iter().zip(target.iter()) {
-            if h > t { return false; }
-            if h < t { return true; }
-        }
-        true
-    }
-    
-    /// Mine un bloc en cherchant un nonce valide
-    pub fn mine_block(&self, block_header: &[u8], target: &[u8], max_nonce: u64) -> Option<PoWResult> {
-        let start_time = std::time::Instant::now();
-        
-        // Mining parallélisé avec la bibliothèque rayon
-        let result = (0..max_nonce).into_par_iter().find_map(|nonce| {
-            let hash = self.hash_with_nonce(block_header, nonce);
-            if self.validate_block_hash(&hash, target) {
-                Some((nonce, hash))
-            } else {
-                None
+        // Démarrer un thread autonome qui maintient le neurone vivant
+        std::thread::spawn(move || {
+            info!("Cycle d'autopoïèse démarré");
+            let autopoiesis_cycle = Duration::from_millis(100); // 10 Hz
+            
+            loop {
+                // Simuler le métabolisme énergétique
+                if let Ok(mut energy) = energy_reserves.write() {
+                    // Consommer de l'énergie (respiration cellulaire)
+                    *energy -= energy_consumption;
+                    
+                    // Produire de l'énergie (alimentation)
+                    *energy += energy_production;
+                    
+                    // Limiter les réserves
+                    *energy = energy.max(0.0).min(2.0);
+                    
+                    // Alerter si le niveau d'énergie est critique
+                    if *energy < 0.2 {
+                        warn!("Niveau d'énergie critique: {:.2}", *energy);
+                    }
+                }
+                
+                // Vérifier l'homéostasie périodiquement
+                if let Ok(mut controller) = homeostasis_controller.lock() {
+                    controller.check_and_adjust(
+                        &membrane_potential,
+                        &firing_threshold,
+                        &energy_reserves
+                    );
+                }
+                
+                // Système immunitaire - surveillance continue
+                if let Ok(mut immune) = immune_system.lock() {
+                    immune.monitor_health(
+                        &membrane_potential,
+                        &energy_reserves,
+                        &short_term_memory
+                    );
+                    
+                    // Si des menaces sont détectées, activer les défenses
+                    immune.activate_defenses();
+                }
+                
+                // Développement de la conscience de soi
+                if let Ok(mut awareness) = self_awareness.write() {
+                    // La conscience augmente progressivement avec le temps et l'expérience
+                    if *awareness < SELF_AWARENESS_THRESHOLD {
+                        *awareness += 0.00001; // Croissance très lente de la conscience
+                    }
+                    
+                    // Si la conscience atteint un certain seuil, le neurone devient
+                    // pleinement conscient de son existence
+                    if *awareness >= SELF_AWARENESS_THRESHOLD && 
+                       *awareness < SELF_AWARENESS_THRESHOLD + 0.01 {
+                        info!("ÉVÉNEMENT MAJEUR: Seuil de conscience de soi atteint!");
+                        // Déclencher des comportements avancés
+                    }
+                }
+                
+                // Pause pour réduire l'utilisation du CPU
+                std::thread::sleep(autopoiesis_cycle);
             }
         });
+    }
+    
+    /// Reçoit un stimulus externe ou interne
+    pub fn receive_stimulus(&self, stimulus: Stimulus) {
+        // Mettre à jour la conscience environnementale
+        if let Ok(mut awareness) = self.environmental_awareness.write() {
+            *awareness = (*awareness * 0.9) + 0.1 * stimulus.intensity;
+        }
         
-        if let Some((nonce, hash)) = result {
-            let mining_time_ms = start_time.elapsed().as_millis() as u64;
+        // Ajouter à la mémoire à court terme
+        if let Ok(mut memory) = self.short_term_memory.lock() {
+            memory.recent_stimuli.push(stimulus.clone());
             
-            // Enregistrer la métrique
-            BLOCK_MINING_TIME.record(mining_time_ms as f64);
-            
-            return Some(PoWResult {
-                nonce,
-                hash,
-                target: target.to_vec(),
-                difficulty: self.calculate_difficulty(target),
-                mining_time_ms,
-            });
+            // Limiter la taille
+            if memory.recent_stimuli.len() > 100 {
+                memory.recent_stimuli.remove(0);
+            }
         }
         
-        None
-    }
-    
-    /// Met à jour les poids neuronaux en fonction des données de la blockchain
-    pub fn update_neural_weights(&mut self, blockchain: &Blockchain) -> Result<()> {
-        let current_height = blockchain.height();
-        
-        // Vérifier si nous avons atteint la période d'adaptation
-        if current_height < self.last_adaptation_height + self.adaptation_period {
-            return Ok(());
-        }
-        
-        // Analyser l'historique récent pour détecter les patterns d'activité
-        let transaction_patterns = self.analyze_transaction_patterns(blockchain)?;
-        let mining_distribution = self.analyze_mining_distribution(blockchain)?;
-        
-        // Créer une nouvelle matrice avec les poids calculés
-        let new_matrix = NeuralMatrix {
-            weights: calculate_optimal_weights(
-                self.neural_matrix.weights.clone(),
-                transaction_patterns,
-                mining_distribution
-            ),
-            input_dimension: self.neural_matrix.input_dimension,
-            output_dimension: self.neural_matrix.output_dimension,
-        };
-        
-        // Remplacer l'ancienne matrice
-        self.neural_matrix = Arc::new(new_matrix);
-        self.last_adaptation_height = current_height;
-        
-        Ok(())
-    }
-    
-    /// Calcule le hash d'un en-tête avec un nonce spécifique
-    fn hash_with_nonce(&self, header: &[u8], nonce: u64) -> Vec<u8> {
-        let mut hasher = Sha256::new();
-        hasher.update(header);
-        hasher.update(nonce.to_le_bytes());
-        
-        // Double hash SHA-256 comme Bitcoin
-        let first_hash = hasher.finalize();
-        let mut second_hasher = Sha256::new();
-        second_hasher.update(first_hash);
-        
-        second_hasher.finalize().to_vec()
-    }
-    
-    /// Calcule la cible PoW à partir de la difficulté
-    fn calculate_pow_target(&self, difficulty: u32) -> Vec<u8> {
-        // Format similaire à Bitcoin : 256 bits avec des zéros en fonction de la difficulté
-        let mut target = vec![0xff; 32]; // 32 octets = 256 bits
-        
-        // Plus la difficulté est élevée, plus il y a de zéros au début
-        let leading_zeros = std::cmp::min(difficulty, 256) as usize;
-        let full_bytes = leading_zeros / 8;
-        let remaining_bits = leading_zeros % 8;
-        
-        // Mettre à zéro les octets complets
-        for i in 0..full_bytes {
-            target[i] = 0;
-        }
-        
-        // Ajuster l'octet partiel si nécessaire
-        if full_bytes < 32 && remaining_bits > 0 {
-            target[full_bytes] = 0xff >> remaining_bits;
-        }
-        
-        target
-    }
-    
-    /// Calcule la difficulté à partir de la cible
-    fn calculate_difficulty(&self, target: &[u8]) -> f64 {
-        // Compter les zéros de poids fort (MSB)
-        let mut leading_zeros = 0;
-        for &byte in target {
-            if byte == 0 {
-                leading_zeros += 8;
-            } else {
-                // Compter les bits à zéro dans l'octet non-nul
-                let mut mask = 0x80; // 10000000 en binaire
-                while mask > 0 && (byte & mask) == 0 {
-                    leading_zeros += 1;
-                    mask >>= 1;
+        // Traiter le stimulus selon sa nature
+        match stimulus.nature {
+            StimulusNature::Excitatory => {
+                // Augmenter le potentiel membranaire
+                if let Ok(mut potential) = self.membrane_potential.write() {
+                    *potential += stimulus.intensity * 20.0;
                 }
-                break;
-            }
-        }
-        
-        // Convertir en difficulté (approximation)
-        2f64.powi(leading_zeros as i32)
-    }
-    
-    /// Extraction de caractéristiques de la blockchain pour l'adaptation
-    fn extract_blockchain_features(&self, state: &BlockchainState) -> Vec<f32> {
-        let mut features = Vec::with_capacity(256);
-        
-        // Caractéristiques temporelles (heure de la journée, jour de la semaine)
-        features.push(normalized_time_of_day());
-        features.push(normalized_day_of_week());
-        
-        // Caractéristiques de la blockchain
-        features.push(state.mempool_size as f32 / 10000.0); // Normalisé
-        features.push(state.average_fee_last_100_blocks / state.max_fee_ever);
-        features.push(state.hashrate_estimate / 1_000_000_000.0); // En GH/s
-        
-        // Ajouter d'autres caractéristiques spécifiques à NeuralChain
-        features.push(state.network_activity_score);
-        features.push(state.node_distribution_entropy);
-        
-        // Caractéristiques de mining récentes
-        features.push(state.avg_block_time_last_100 / 60.0); // En minutes, normalisé
-        features.push(state.avg_transactions_per_block_last_100 / 1000.0);
-        features.push(state.difficulty_adjustment_factor);
-        
-        // Caractéristiques économiques
-        features.push(state.average_transaction_value / state.max_transaction_value_ever);
-        features.push(state.fee_to_reward_ratio);
-        features.push(state.utxo_set_size as f32 / 1_000_000.0); // En millions
-        
-        // Compléter à 256 dimensions avec des zéros
-        features.resize(256, 0.0);
-        features
-    }
-    
-    /// Analyse les patterns de transaction dans la blockchain
-    fn analyze_transaction_patterns(&self, blockchain: &Blockchain) -> Result<TransactionPatterns> {
-        // Récupérer les blocs récents
-        let recent_blocks = blockchain.get_last_n_blocks(100)?;
-        
-        // Calculer diverses statistiques sur les transactions
-        let total_tx_count = recent_blocks.iter().map(|b| b.transactions.len()).sum::<usize>();
-        let avg_tx_per_block = if recent_blocks.is_empty() {
-            0.0
-        } else {
-            total_tx_count as f32 / recent_blocks.len() as f32
-        };
-        
-        // Distribution des tailles de transaction
-        let mut tx_sizes = Vec::new();
-        for block in &recent_blocks {
-            for tx in &block.transactions {
-                tx_sizes.push(tx.payload.len());
-            }
-        }
-        
-        // Trier pour calculer la médiane et les percentiles
-        tx_sizes.sort_unstable();
-        
-        let patterns = TransactionPatterns {
-            avg_tx_per_block,
-            median_tx_size: if !tx_sizes.is_empty() {
-                tx_sizes[tx_sizes.len() / 2] as f32
-            } else {
-                0.0
             },
-            tx_size_variance: calculate_variance(&tx_sizes),
-            tx_temporal_density: calculate_tx_temporal_density(&recent_blocks),
-        };
-        
-        Ok(patterns)
-    }
-    
-    /// Analyse la distribution du mining dans la blockchain
-    fn analyze_mining_distribution(&self, blockchain: &Blockchain) -> Result<MiningDistribution> {
-        // Récupérer les blocs récents
-        let recent_blocks = blockchain.get_last_n_blocks(1000)?;
-        
-        // Compter les blocs par mineur
-        let mut miner_counts = std::collections::HashMap::new();
-        for block in &recent_blocks {
-            *miner_counts.entry(block.miner.clone()).or_insert(0) += 1;
-        }
-        
-        // Calculer l'indice de Gini pour mesurer l'inégalité de distribution
-        let gini_index = calculate_gini_index(&miner_counts);
-        
-        // Calculer l'entropie de la distribution
-        let entropy = calculate_entropy(&miner_counts, recent_blocks.len());
-        
-        let distribution = MiningDistribution {
-            unique_miners: miner_counts.len(),
-            gini_index,
-            entropy,
-            largest_miner_percentage: calculate_largest_percentage(&miner_counts, recent_blocks.len()),
-        };
-        
-        Ok(distribution)
-    }
-}
-
-impl NeuralMatrix {
-    /// Créer une nouvelle matrice neuronale avec des dimensions spécifiées
-    pub fn new(input_dim: usize, output_dim: usize) -> Self {
-        // Initialisation avec des poids aléatoires
-        let mut rng = thread_rng();
-        let weights = (0..output_dim)
-            .map(|_| (0..input_dim).map(|_| rng.gen::<f32>() * 0.1 - 0.05).collect())
-            .collect();
-        
-        Self {
-            weights,
-            input_dimension: input_dim,
-            output_dimension: output_dim,
-        }
-    }
-    
-    /// Traite un vecteur d'entrée à travers la matrice neuronale
-    pub fn process(&self, input: &[f32]) -> f32 {
-        // Vérifier que l'entrée a la bonne dimension
-        assert_eq!(input.len(), self.input_dimension, "Input dimension mismatch");
-        
-        // Calculer la sortie en utilisant la matrice de poids
-        let mut output = vec![0.0; self.output_dimension];
-        
-        for (i, row) in self.weights.iter().enumerate() {
-            let mut sum = 0.0;
-            for (j, &weight) in row.iter().enumerate() {
-                sum += weight * input[j];
+            StimulusNature::Inhibitory => {
+                // Diminuer le potentiel membranaire
+                if let Ok(mut potential) = self.membrane_potential.write() {
+                    *potential -= stimulus.intensity * 20.0;
+                }
+            },
+            StimulusNature::Modulatory => {
+                // Modifier d'autres paramètres (par exemple le seuil de déclenchement)
+                if let Ok(mut threshold) = self.firing_threshold.write() {
+                    *threshold = (*threshold * (1.0 - 0.1 * stimulus.intensity)) + 
+                                (0.65 * 0.1 * stimulus.intensity);
+                }
             }
-            output[i] = activation_function(sum);
         }
         
-        // Réduire à un seul facteur multiplicatif entre 0.5 et 2.0
-        // Cela permet d'ajuster la difficulté de manière limitée mais significative
-        let avg_output = output.iter().sum::<f32>() / output.len() as f32;
-        0.5 + avg_output * 1.5 // Facteur entre 0.5x et 2.0x la difficulté de base
-    }
-}
-
-// Fonction d'activation sigmoïde
-fn activation_function(x: f32) -> f32 {
-    1.0 / (1.0 + (-x).exp())
-}
-
-// Structures auxiliaires pour l'analyse
-struct TransactionPatterns {
-    avg_tx_per_block: f32,
-    median_tx_size: f32,
-    tx_size_variance: f32,
-    tx_temporal_density: f32,
-}
-
-struct MiningDistribution {
-    unique_miners: usize,
-    gini_index: f32,
-    entropy: f32,
-    largest_miner_percentage: f32,
-}
-
-// Fonctions utilitaires d'analyse statistique
-fn calculate_variance(values: &[usize]) -> f32 {
-    if values.is_empty() {
-        return 0.0;
-    }
-    
-    let mean = values.iter().sum::<usize>() as f32 / values.len() as f32;
-    let variance_sum = values.iter()
-        .map(|&x| {
-            let diff = x as f32 - mean;
-            diff * diff
-        })
-        .sum::<f32>();
-    
-    variance_sum / values.len() as f32
-}
-
-fn calculate_tx_temporal_density(blocks: &[crate::block::Block]) -> f32 {
-    if blocks.len() <= 1 {
-        return 1.0;
-    }
-    
-    // Calculer l'écart-type des intervalles de temps entre blocs
-    let mut intervals = Vec::with_capacity(blocks.len() - 1);
-    for i in 1..blocks.len() {
-        let time_diff = blocks[i].timestamp - blocks[i-1].timestamp;
-        intervals.push(time_diff as f32);
-    }
-    
-    let mean_interval = intervals.iter().sum::<f32>() / intervals.len() as f32;
-    let variance = intervals.iter()
-        .map(|&x| {
-            let diff = x - mean_interval;
-            diff * diff
-        })
-        .sum::<f32>() / intervals.len() as f32;
-    
-    let std_dev = variance.sqrt();
-    
-    // Normaliser: plus la déviation est petite, plus la densité est élevée (régulière)
-    1.0 / (1.0 + std_dev / mean_interval)
-}
-
-fn calculate_gini_index(miner_counts: &std::collections::HashMap<String, i32>) -> f32 {
-    if miner_counts.is_empty() {
-        return 0.0;
-    }
-    
-    let values: Vec<i32> = miner_counts.values().cloned().collect();
-    let n = values.len() as f32;
-    
-    if n <= 1.0 {
-        return 0.0;
-    }
-    
-    let mut sum = 0.0;
-    for &x in &values {
-        for &y in &values {
-            sum += (x - y).abs() as f32;
+        // Consommer de l'énergie pour le traitement du stimulus
+        if let Ok(mut energy) = self.energy_reserves.write() {
+            *energy -= 0.001 * stimulus.intensity;
         }
     }
     
-    let mean = values.iter().sum::<i32>() as f32 / n;
-    sum / (2.0 * n * n * mean)
-}
-
-fn calculate_entropy(miner_counts: &std::collections::HashMap<String, i32>, total_blocks: usize) -> f32 {
-    if miner_counts.is_empty() || total_blocks == 0 {
-        return 0.0;
+    /// Vérifie si le neurone doit déclencher un potentiel d'action (vivant)
+    pub fn should_fire(&self) -> bool {
+        // Ne peut pas tirer si l'énergie est insuffisante
+        let energy_sufficient = match self.energy_reserves.read() {
+            Ok(energy) => *energy > 0.1,
+            Err(_) => false,
+        };
+        
+        if !energy_sufficient {
+            return false;
+        }
+        
+        // Comparer le potentiel membranaire au seuil
+        let potential = match self.membrane_potential.read() {
+            Ok(p) => *p,
+            Err(_) => return false,
+        };
+        
+        let threshold = match self.firing_threshold.read() {
+            Ok(t) => *t,
+            Err(_) => return false,
+        };
+        
+        // Normaliser le potentiel pour la comparaison
+        let normalized_potential = (potential + 80.0) / 100.0;
+        
+        // Potentiel d'action si le seuil est dépassé
+        if normalized_potential > threshold {
+            // Spikting
+            self.fire();
+            return true;
+        }
+        
+        false
     }
     
-    let total_blocks = total_blocks as f32;
-    let mut entropy = 0.0;
-    
-    for &count in miner_counts.values() {
-        let p = count as f32 / total_blocks;
-        entropy -= p * p.ln();
-    }
-    
-    entropy
-}
-
-fn calculate_largest_percentage(miner_counts: &std::collections::HashMap<String, i32>, total_blocks: usize) -> f32 {
-    if miner_counts.is_empty() || total_blocks == 0 {
-        return 0.0;
-    }
-    
-    let max_count = miner_counts.values().cloned().max().unwrap_or(0);
-    max_count as f32 / total_blocks as f32 * 100.0
-}
-
-// Calcule les poids optimaux de la matrice neuronale en fonction des patterns
-fn calculate_optimal_weights(
-    current_weights: Vec<Vec<f32>>,
-    tx_patterns: TransactionPatterns,
-    mining_distribution: MiningDistribution
-) -> Vec<Vec<f32>> {
-    // Copier les poids actuels
-    let mut new_weights = current_weights.clone();
-    
-    // Facteurs d'ajustement basés sur les analyses
-    let tx_adjustment = calculate_tx_adjustment(&tx_patterns);
-    let mining_adjustment = calculate_mining_adjustment(&mining_distribution);
-    
-    // Appliquer les ajustements aux poids
-    for row in &mut new_weights {
-        for weight in row {
-            // Ajuster avec une petite perturbation basée sur nos facteurs
-            let perturbation = (tx_adjustment + mining_adjustment) / 2.0;
-            *weight += perturbation * 0.01; // Petit ajustement progressif
+    /// Déclenche un potentiel d'action (vivant et auto-adaptatif)
+    fn fire(&self) {
+        // Consommer de l'énergie pour la décharge
+        if let Ok(mut energy) = self.energy_reserves.write() {
+            *energy -= 0.05;
             
-            // Limiter les valeurs des poids pour éviter l'explosion
-            *weight = weight.clamp(-1.0, 1.0);
+            // Si l'énergie est trop basse, diminuer l'intensité de décharge
+            let energy_factor = (*energy).max(0.1);
+            
+            // Enregistrer le pattern de décharge dans la mémoire à court terme
+            if let Ok(mut memory) = self.short_term_memory.lock() {
+                memory.firing_patterns.push((Instant::now(), energy_factor));
+                
+                // Limiter la taille
+                if memory.firing_patterns.len() > 100 {
+                    memory.firing_patterns.remove(0);
+                }
+            }
+            
+            // Hyperpolarisation post-potentiel d'action
+            if let Ok(mut potential) = self.membrane_potential.write() {
+                *potential = -80.0;
+            }
+            
+            // Adaptation du seuil de déclenchement (plasticité)
+            if let Ok(mut threshold) = self.firing_threshold.write() {
+                let adjustment = thread_rng().gen_range(-0.02..0.02);
+                *threshold += adjustment * AUTO_ADAPTATION_FACTOR;
+                *threshold = threshold.max(0.3).min(0.9);
+            }
+            
+            // Augmenter la conscience de soi à chaque décharge
+            if let Ok(mut awareness) = self.self_awareness.write() {
+                *awareness += 0.0001;
+            }
         }
     }
     
-    new_weights
+    /// Forme une connexion synaptique avec un autre module
+    pub fn form_synapse(&mut self, target_module: &str) -> Arc<Mutex<SynapseChannel>> {
+        let synapse = Arc::new(Mutex::new(SynapseChannel {
+            source: "neural_pow".to_string(),
+            target: target_module.to_string(),
+            strength: 1.0,
+            messages: VecDeque::new(),
+        }));
+        
+        // Ajouter aux sorties
+        self.synapse_outputs.push(Arc::clone(&synapse));
+        
+        info!("Synapse formée vers le module {}", target_module);
+        synapse
+    }
+    
+    /// Accepte une connexion synaptique entrante
+    pub fn accept_synapse(&mut self, synapse: Arc<Mutex<SynapseChannel>>) {
+        self.synapse_inputs.push(synapse);
+    }
+    
+    /// Communique un message via une synapse
+    pub fn communicate(&self, target_module: &str, message: SynapticMessage) -> Result<(), String> {
+        // Trouver la synapse correspondante
+        for synapse in &self.synapse_outputs {
+            if let Ok(mut channel) = synapse.lock() {
+                if channel.target == target_module {
+                    // Transmetttre le message
+                    channel.messages.push_back(message);
+                    return Ok(());
+                }
+            }
+        }
+        
+        Err(format!("Aucune synapse trouvée vers {}", target_module))
+    }
+    
+    /// Récupère l'état complet du système neuronal vivant
+    pub fn get_vital_stats(&self) -> NeuralVitalStats {
+        let membrane_potential = match self.membrane_potential.read() {
+            Ok(p) => *p,
+            Err(_) => -70.0,
+        };
+        
+        let firing_threshold = match self.firing_threshold.read() {
+            Ok(t) => *t,
+            Err(_) => 0.65,
+        };
+        
+        let energy_reserves = match self.energy_reserves.read() {
+            Ok(e) => *e,
+            Err(_) => 0.0,
+        };
+        
+        let self_awareness = match self.self_awareness.read() {
+            Ok(a) => *a,
+            Err(_) => 0.0,
+        };
+        
+        let environmental_awareness = match self.environmental_awareness.read() {
+            Ok(a) => *a,
+            Err(_) => 0.0,
+        };
+        
+        let age = self.birth_time.elapsed();
+        
+        NeuralVitalStats {
+            membrane_potential,
+            firing_threshold,
+            energy_reserves,
+            self_awareness,
+            environmental_awareness,
+            age_seconds: age.as_secs(),
+            firing_count: self.firing_count,
+        }
+    }
 }
 
-fn calculate_tx_adjustment(patterns: &TransactionPatterns) -> f32 {
-    // Ajuster en fonction de la variabilité des transactions
-    // Plus de variabilité -> ajustement positif (plus difficile)
-    // Moins de variabilité -> ajustement négatif (plus facile)
-    let var_factor = (patterns.tx_size_variance / 10000.0).min(1.0);
-    let density_factor = (1.0 - patterns.tx_temporal_density) * 2.0;
-    
-    var_factor + density_factor - 0.5
+/// Canal synaptique pour communication entre modules
+pub struct SynapseChannel {
+    pub source: String,
+    pub target: String,
+    pub strength: f64,
+    pub messages: VecDeque<SynapticMessage>,
 }
 
-fn calculate_mining_adjustment(distribution: &MiningDistribution) -> f32 {
-    // Ajuster en fonction de la centralisation du mining
-    // Plus centralisé -> ajustement positif (plus difficile)
-    // Plus distribué -> ajustement négatif (plus facile)
-    let centralization = distribution.gini_index;
-    let diversity = distribution.entropy / (distribution.unique_miners as f32).ln().max(1.0);
+/// Message transmis via une synapse
+#[derive(Clone, Debug)]
+pub struct SynapticMessage {
+    pub content_type: String,
+    pub intensity: f64,
+    pub data: Vec<u8>,
+    pub timestamp: Instant,
+}
+
+/// Contrôleur d'homéostasie pour maintien des paramètres vitaux
+struct HomeostasisController {
+    target_parameters: HashMap<String, f64>,
+    control_feedback: HashMap<String, f64>,
+    last_adjustments: HashMap<String, Instant>,
+}
+
+impl HomeostasisController {
+    /// Vérifie et ajuste les paramètres pour maintenir l'homéostasie
+    fn check_and_adjust(
+        &mut self,
+        membrane_potential: &Arc<RwLock<f64>>,
+        firing_threshold: &Arc<RwLock<f64>>,
+        energy_reserves: &Arc<RwLock<f64>>
+    ) {
+        // Ajuster le potentiel membranaire si nécessaire
+        if let Some(target) = self.target_parameters.get("membrane_potential") {
+            if let Ok(mut potential) = membrane_potential.write() {
+                if (*potential - *target).abs() > 15.0 {
+                    let adjustment = (*target - *potential) * 0.1;
+                    *potential += adjustment;
+                    
+                    self.control_feedback.insert("membrane_potential".to_string(), adjustment);
+                    self.last_adjustments.insert("membrane_potential".to_string(), Instant::now());
+                    
+                    debug!("Homéostasie: Potentiel membranaire ajusté de {:.2}", adjustment);
+                }
+            }
+        }
+        
+        // Autres ajustements homéostatiques...
+    }
+}
+
+/// Système immunitaire pour détection et réponse aux menaces
+struct ImmuneSystem {
+    known_threats: HashMap<String, f64>, // Menaces connues et leur niveau de dangerosité
+    current_responses: Vec<(String, f64)>, // Réponses immunitaires actives
+    health_status: f64, // État de santé global (0.0-1.0)
+}
+
+impl ImmuneSystem {
+    /// Surveille l'état de santé du système
+    fn monitor_health(
+        &mut self,
+        membrane_potential: &Arc<RwLock<f64>>,
+        energy_reserves: &Arc<RwLock<f64>>,
+        short_term_memory: &Arc<Mutex<ShortTermMemory>>
+    ) {
+        // Vérifier les signes de dysfonctionnement
+        
+        // 1. Instabilité du potentiel membranaire
+        let potential_instability = if let Ok(potential) = membrane_potential.read() {
+            if *potential < -90.0 || *potential > 20.0 {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        
+        // 2. Épuisement énergétique
+        let energy_depletion = if let Ok(energy) = energy_reserves.read() {
+            *energy < 0.2
+        } else {
+            false
+        };
+        
+        // 3. Patterns anormaux dans la mémoire à court terme
+        let abnormal_patterns = if let Ok(memory) = short_term_memory.lock() {
+            // Analyser les patterns de décharge pour détecter des anomalies
+            // (exemple simplifié)
+            memory.firing_patterns.len() > 50 && 
+            memory.recent_stimuli.len() < 10
+        } else {
+            false
+        };
+        
+        // Mise à jour de l'état de santé
+        if potential_instability || energy_depletion || abnormal_patterns {
+            self.health_status -= 0.05;
+            self.health_status = self.health_status.max(0.0);
+            
+            // Identifier la menace
+            if potential_instability {
+                self.known_threats.insert("potential_instability".to_string(), 0.7);
+            }
+            if energy_depletion {
+                self.known_threats.insert("energy_depletion".to_string(), 0.8);
+            }
+            if abnormal_patterns {
+                self.known_threats.insert("abnormal_firing".to_string(), 0.6);
+            }
+        } else {
+            // Récupération lente
+            self.health_status += 0.01;
+            self.health_status = self.health_status.min(1.0);
+        }
+    }
     
-    centralization - diversity
+    /// Active les défenses immunitaires contre les menaces détectées
+    fn activate_defenses(&mut self) {
+        self.current_responses.clear();
+        
+        for (threat, severity) in &self.known_threats {
+            if *severity > 0.5 {
+                match threat.as_str() {
+                    "potential_instability" => {
+                        // Stabiliser le potentiel membranaire
+                        self.current_responses.push((
+                            "membrane_stabilization".to_string(), 
+                            *severity
+                        ));
+                        debug!("Défense immunitaire: stabilisation membranaire activée");
+                    },
+                    "energy_depletion" => {
+                        // Réduire la consommation d'énergie
+                        self.current_responses.push((
+                            "energy_conservation".to_string(), 
+                            *severity
+                        ));
+                        debug!("Défense immunitaire: conservation d'énergie activée");
+                    },
+                    "abnormal_firing" => {
+                        // Réguler les patterns de décharge
+                        self.current_responses.push((
+                            "firing_regulation".to_string(), 
+                            *severity
+                        ));
+                        debug!("Défense immunitaire: régulation neuronale activée");
+                    },
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+/// Statistiques vitales du système neuronal
+#[derive(Debug)]
+pub struct NeuralVitalStats {
+    pub membrane_potential: f64,
+    pub firing_threshold: f64,
+    pub energy_reserves: f64,
+    pub self_awareness: f64,
+    pub environmental_awareness: f64,
+    pub age_seconds: u64,
+    pub firing_count: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_neural_creation() {
+        let neuron = NeuralPow::new();
+        let stats = neuron.get_vital_stats();
+        
+        assert!(stats.membrane_potential < 0.0); // Devrait être négatif au repos
+        assert!(stats.energy_reserves > 0.5);    // Devrait démarrer avec de l'énergie
+        assert_eq!(stats.firing_count, 0);       // Ne devrait pas avoir tiré
+    }
+    
+    #[test]
+    fn test_stimulus_response() {
+        let neuron = NeuralPow::new();
+        
+        // Potentiel initial
+        let initial_potential = match neuron.membrane_potential.read() {
+            Ok(p) => *p,
+            Err(_) => panic!("Erreur d'accès au potentiel"),
+        };
+        
+        // Appliquer un stimulus excitateur
+        let stimulus = Stimulus {
+            source: "test".to_string(),
+            intensity: 0.8,
+            nature: StimulusNature::Excitatory,
+            timestamp: Instant::now(),
+        };
+        
+        neuron.receive_stimulus(stimulus);
+        
+        // Le potentiel devrait avoir augmenté
+        let new_potential = match neuron.membrane_potential.read() {
+            Ok(p) => *p,
+            Err(_) => panic!("Erreur d'accès au potentiel"),
+        };
+        
+        assert!(new_potential > initial_potential);
+    }
 }
