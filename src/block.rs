@@ -1,4 +1,4 @@
-use crate::transaction::Transaction;
+use crate::wallet::Transaction;
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
 use anyhow::{Result, Context};
@@ -119,7 +119,7 @@ impl Block {
             self.nonce += 1;
         }
         
-        bail!("Échec du minage: aucun nonce valide trouvé")
+        Err(anyhow::anyhow!("Échec du minage: aucun nonce valide trouvé"))
     }
     
     /// Vérifie si le hash du bloc est valide par rapport à la difficulté
@@ -223,15 +223,10 @@ impl Block {
     }
 }
 
-/// Fonction utilitaire pour bail (utilisé dans `mine()`)
-pub fn bail<T>(msg: &str) -> Result<T> {
-    Err(anyhow::anyhow!(msg))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transaction::{Transaction, TransactionType};
+    use crate::wallet::{Transaction, TransactionType};
     use std::time::{SystemTime, UNIX_EPOCH};
     
     #[test]
