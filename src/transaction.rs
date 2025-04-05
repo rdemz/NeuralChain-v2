@@ -1,5 +1,5 @@
-use anyhow::{Result, Context};
-use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
+use anyhow::{Result, Context, bail};
+use ed25519_dalek::{Signature, SigningKey, VerifyingKey, Signer, Verifier};
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -139,13 +139,13 @@ impl Transaction {
         };
         
         // Reconstruire la signature
-        let signature = match Signature::from_bytes(signature_bytes.as_slice()) {
+        let signature = match Signature::from_slice(signature_bytes) {
             Ok(sig) => sig,
             Err(_) => return Ok(false),
         };
         
         // Reconstruire la clé publique
-        let verifying_key = match VerifyingKey::from_bytes(self.sender.as_slice()) {
+        let verifying_key = match VerifyingKey::from_slice(&self.sender) {
             Ok(key) => key,
             Err(_) => return Ok(false),
         };
@@ -172,15 +172,4 @@ impl Transaction {
         
         Ok(hasher.finalize().to_vec())
     }
-}
-
-/// Macro utilitaire pour faciliter la définition d'erreurs
-#[macro_export]
-macro_rules! bail {
-    ($msg:expr) => {
-        return Err(anyhow::anyhow!($msg))
-    };
-    ($fmt:expr, $($arg:tt)*) => {
-        return Err(anyhow::anyhow!($fmt, $($arg)*))
-    };
 }
