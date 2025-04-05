@@ -1,5 +1,5 @@
 use sha2::{Sha256, Digest};
-use ed25519_dalek::{Keypair, Signer, Verifier, Signature};
+use ed25519_dalek::{SigningKey, Signature, Verifier, Signer};
 use anyhow::{Result, Context};
 use rand::rngs::OsRng;
 
@@ -11,7 +11,7 @@ pub fn hash(data: &[u8]) -> Vec<u8> {
 }
 
 /// Crée une signature Ed25519 des données avec la clé privée fournie
-pub fn create_signature(keypair: &Keypair, data: &[u8]) -> Result<Vec<u8>> {
+pub fn create_signature(keypair: &SigningKey, data: &[u8]) -> Result<Vec<u8>> {
     let signature = keypair.sign(data);
     Ok(signature.to_bytes().to_vec())
 }
@@ -22,14 +22,18 @@ pub fn verify_signature(
     data: &[u8],
     signature_bytes: &[u8]
 ) -> Result<bool> {
-    use ed25519_dalek::VerifyingKey;
+    use ed25519_dalek::{VerifyingKey, SignatureError};
     
-    // Correction: Gérer correctement les erreurs de conversion
-    let public_key = VerifyingKey::from_bytes(public_key_bytes.try_into()
-        .context("Clé publique invalide")?)?;
+    // Correction: Convertir correctement les tableaux d'octets
+    let public_key = match VerifyingKey::from_slice(public_key_bytes) {
+        Ok(key) => key,
+        Err(_) => return Ok(false),
+    };
     
-    let signature = Signature::from_bytes(signature_bytes.try_into()
-        .context("Signature invalide")?)?;
+    let signature = match Signature::from_slice(signature_bytes) {
+        Ok(sig) => sig,
+        Err(_) => return Ok(false),
+    };
     
     match public_key.verify(data, &signature) {
         Ok(_) => Ok(true),
@@ -40,10 +44,10 @@ pub fn verify_signature(
 /// Génère une paire de clés Ed25519
 pub fn generate_keypair() -> Result<(Vec<u8>, Vec<u8>)> {
     let mut csprng = OsRng;
-    let keypair = Keypair::generate(&mut csprng);
+    let keypair = SigningKey::generate(&mut csprng);
     
     let private_key = keypair.to_bytes().to_vec();
-    let public_key = keypair.public.to_bytes().to_vec();
+    let public_key = keypair.verifying_key().to_bytes().to_vec();
     
     Ok((private_key, public_key))
 }
@@ -82,12 +86,12 @@ mod tests {
     #[test]
     fn test_signature_verification() {
         let mut csprng = OsRng;
-        let keypair = Keypair::generate(&mut csprng);
+        let keypair = SigningKey::generate(&mut csprng);
         let data = b"test message";
         
         let signature_result = create_signature(&keypair, data).unwrap();
         let verified = verify_signature(
-            keypair.public.as_bytes(),
+            &keypair.verifying_key().to_bytes(),
             data,
             &signature_result
         ).unwrap();
@@ -99,7 +103,7 @@ mod tests {
     fn test_keypair_generation() {
         let (private_key, public_key) = generate_keypair().unwrap();
         
-        assert_eq!(private_key.len(), 64); // Ed25519 clé privée: 64 octets
+        assert_eq!(private_key.len(), 32); // Ed25519 clé privée: 32 octets
         assert_eq!(public_key.len(), 32);  // Ed25519 clé publique: 32 octets
     }
     
