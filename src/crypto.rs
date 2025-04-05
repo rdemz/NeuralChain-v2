@@ -1,6 +1,6 @@
 use sha2::{Sha256, Digest};
 use ed25519_dalek::{SigningKey, Signature, Verifier, Signer};
-use anyhow::{Result, Context};
+use anyhow::Result;
 use rand::rngs::OsRng;
 
 /// Calcule un hash SHA-256 des données
@@ -22,17 +22,25 @@ pub fn verify_signature(
     data: &[u8],
     signature_bytes: &[u8]
 ) -> Result<bool> {
-    use ed25519_dalek::{VerifyingKey, SignatureError};
+    use ed25519_dalek::VerifyingKey;
     
     // Correction: Convertir correctement les tableaux d'octets
-    let public_key = match VerifyingKey::from_slice(public_key_bytes) {
-        Ok(key) => key,
-        Err(_) => return Ok(false),
+    let public_key = if public_key_bytes.len() == 32 {
+        match VerifyingKey::from_bytes(public_key_bytes.try_into().unwrap_or(&[0; 32])) {
+            Ok(key) => key,
+            Err(_) => return Ok(false),
+        }
+    } else {
+        return Ok(false);
     };
     
-    let signature = match Signature::from_slice(signature_bytes) {
-        Ok(sig) => sig,
-        Err(_) => return Ok(false),
+    let signature = if signature_bytes.len() == 64 {
+        match Signature::from_bytes(signature_bytes.try_into().unwrap_or(&[0; 64])) {
+            Ok(sig) => sig,
+            Err(_) => return Ok(false),
+        }
+    } else {
+        return Ok(false);
     };
     
     match public_key.verify(data, &signature) {
