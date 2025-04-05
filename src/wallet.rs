@@ -1,6 +1,6 @@
 use crate::transaction::{Transaction, TransactionType, SignatureScheme};
 use anyhow::{Result, Context};
-use ed25519_dalek::{SigningKey, VerifyingKey, Signer};
+use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use sha2::{Sha256, Digest};
 use crate::utils::{bytes_to_hex, hex_to_bytes};
@@ -142,9 +142,16 @@ impl Wallet {
         let private_key_bytes = hex_to_bytes(&self.keys.private_key)?;
         
         // Reconstruire la clé de signature
-        let signing_key = SigningKey::from_bytes(private_key_bytes.as_slice())
-            .map_err(|_| anyhow::anyhow!("Longueur de clé privée invalide"))?;
-            
+        if private_key_bytes.len() != 32 {
+            return Err(anyhow::anyhow!("Longueur de clé privée invalide"));
+        }
+        
+        let mut key_bytes = [0u8; 32];
+        key_bytes.copy_from_slice(&private_key_bytes);
+        let signing_key = match SigningKey::from_bytes(&key_bytes) {
+            sig_key => sig_key,
+        };
+        
         // Définir le schéma de signature et signer
         tx.signature_scheme = SignatureScheme::Ed25519;
         tx.sign_ed25519(&signing_key)?;
@@ -191,7 +198,6 @@ mod tests {
     #[test]
     fn test_wallet_save_and_load() {
         let test_path = env::temp_dir().join("test_wallet.json");
-        let test_path_str = test_path.to_str().unwrap();
         
         // Créer et sauvegarder un portefeuille
         let mut wallet = Wallet::new().unwrap();
@@ -213,8 +219,8 @@ mod tests {
     fn test_transaction_creation() {
         let mut wallet = Wallet::new().unwrap();
         
-        // Créer une transaction
-        let tx = wallet.create_transaction(
+        // Créer une transaction (utilisons un underscore pour éviter l'avertissement)
+        let _tx = wallet.create_transaction(
             None,
             100,
             10,
