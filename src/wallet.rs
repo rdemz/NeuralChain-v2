@@ -1,227 +1,186 @@
-use crate::transaction::{Transaction, TransactionType, SignatureScheme};
 use anyhow::{Result, Context};
-use ed25519_dalek::{SigningKey, VerifyingKey, Signer};
-use rand::rngs::OsRng;
-use sha2::{Sha256, Digest};
-use crate::utils::{bytes_to_hex, hex_to_bytes};
+use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 use serde::{Serialize, Deserialize};
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Structure pour le stockage sécurisé d'une clé privée
-#[derive(Serialize, Deserialize, Clone)]
-pub struct WalletKeys {
-    pub private_key: String,   // Clé privée en hexadécimal
-    pub public_key: String,    // Clé publique en hexadécimal
-    pub address: String,       // Adresse du portefeuille (hash de la clé publique)
+/// Différents types de transactions
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum TransactionType {
+    /// Transfert standard de fonds
+    Transfer,
+    /// Enregistrement de données sur la blockchain
+    DataStorage,
+    /// Contrats intelligents
+    SmartContract,
+    /// Création d'actif
+    AssetCreation,
 }
 
-/// Structure principale du portefeuille
-pub struct Wallet {
-    /// Clés du portefeuille
-    keys: WalletKeys,
-    /// Chemin du fichier de stockage des clés
-    wallet_file: Option<PathBuf>,
-    /// Nonce actuel pour les transactions
-    current_nonce: u64,
+/// Types de schémas de signature supportés
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SignatureScheme {
+    /// Ed25519
+    Ed25519,
+    /// ECDSA
+    ECDSA,
+    /// Aucune signature (utilisation interne uniquement)
+    None,
 }
 
-impl Wallet {
-    /// Crée un nouveau portefeuille avec de nouvelles clés
-    pub fn new() -> Result<Self> {
-        let mut csprng = OsRng;
-        let signing_key = SigningKey::generate(&mut csprng);
-        let verifying_key = VerifyingKey::from(&signing_key);
-        
-        // Convertir les clés en format hexadécimal
-        let private_key = bytes_to_hex(&signing_key.to_bytes());
-        let public_key = bytes_to_hex(verifying_key.as_bytes());
-        
-        // Calculer l'adresse (hash de la clé publique)
-        let mut hasher = Sha256::new();
-        hasher.update(verifying_key.as_bytes());
-        let address = bytes_to_hex(&hasher.finalize()[0..20]); // Prendre les 20 premiers octets
-        
-        let keys = WalletKeys {
-            private_key,
-            public_key,
-            address,
-        };
-        
-        Ok(Self {
-            keys,
-            wallet_file: None,
-            current_nonce: 0,
-        })
-    }
-    
-    /// Charge un portefeuille depuis un fichier
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = fs::read_to_string(&path)
-            .context(format!("Échec de lecture du fichier de portefeuille {:?}", path.as_ref()))?;
-            
-        let keys: WalletKeys = serde_json::from_str(&content)
-            .context("Échec de désérialisation des clés du portefeuille")?;
-            
-        Ok(Self {
-            keys,
-            wallet_file: Some(path.as_ref().to_path_buf()),
-            current_nonce: 0,
-        })
-    }
-    
-    /// Sauvegarde le portefeuille dans un fichier
-    pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        let serialized = serde_json::to_string_pretty(&self.keys)
-            .context("Échec de sérialisation des clés du portefeuille")?;
-            
-        let mut file = fs::File::create(&path)
-            .context(format!("Échec de création du fichier de portefeuille {:?}", path.as_ref()))?;
-            
-        file.write_all(serialized.as_bytes())
-            .context("Échec d'écriture des données du portefeuille")?;
-            
-        self.wallet_file = Some(path.as_ref().to_path_buf());
-        
-        Ok(())
-    }
-    
-    /// Obtient l'adresse du portefeuille
-    pub fn get_address(&self) -> &str {
-        &self.keys.address
-    }
-    
-    /// Obtient la clé publique du portefeuille
-    pub fn get_public_key(&self) -> &str {
-        &self.keys.public_key
-    }
-    
-    /// Crée une nouvelle transaction
-    pub fn create_transaction(
-        &mut self,
-        recipient: Option<&str>,
+/// Structure principale de transaction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Transaction {
+    /// Type de transaction
+    pub transaction_type: TransactionType,
+    /// Clé publique de l'expéditeur
+    pub sender: Vec<u8>,
+    /// Clé publique du destinataire (optionnel selon le type de transaction)
+    pub recipient: Option<Vec<u8>>,
+    /// Montant transféré
+    pub amount: u64,
+    /// Frais de transaction
+    pub fee: u64,
+    /// Nonce (numéro de séquence de la transaction)
+    pub nonce: u64,
+    /// Horodatage
+    pub timestamp: u64,
+    /// Données supplémentaires spécifiques au type de transaction
+    pub data: Vec<u8>,
+    /// Schéma de signature utilisé
+    pub signature_scheme: SignatureScheme,
+    /// Signature de la transaction
+    pub signature: Option<Vec<u8>>,
+}
+
+impl Transaction {
+    /// Crée une nouvelle transaction non signée
+    pub fn new(
+        transaction_type: TransactionType,
+        sender: Vec<u8>,
+        recipient: Option<Vec<u8>>,
         amount: u64,
         fee: u64,
-        transaction_type: TransactionType,
+        nonce: u64,
         data: Vec<u8>,
-    ) -> Result<Transaction> {
-        // Convertir la clé publique de l'expéditeur en octets
-        let sender_public_key = hex_to_bytes(&self.keys.public_key)?;
-        
-        // Convertir la clé publique du destinataire en octets (si fournie)
-        let recipient_public_key = if let Some(recipient_hex) = recipient {
-            Some(hex_to_bytes(recipient_hex)?)
-        } else {
-            None
-        };
-        
-        // Créer la transaction non signée
-        let mut tx = Transaction::new(
+    ) -> Self {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
             transaction_type,
-            sender_public_key,
-            recipient_public_key,
+            sender,
+            recipient,
             amount,
             fee,
-            self.current_nonce,
+            nonce,
+            timestamp,
             data,
-        );
-        
-        // Signer la transaction
-        self.sign_transaction(&mut tx)?;
-        
-        // Incrémenter le nonce
-        self.current_nonce += 1;
-        
-        Ok(tx)
+            signature_scheme: SignatureScheme::None,
+            signature: None,
+        }
     }
-    
-    /// Signe une transaction
-    fn sign_transaction(&self, tx: &mut Transaction) -> Result<()> {
-        // Convertir la clé privée en octets
-        let private_key_bytes = hex_to_bytes(&self.keys.private_key)?;
+
+    /// Signe la transaction avec une clé Ed25519
+    pub fn sign_ed25519(&mut self, signing_key: &SigningKey) -> Result<()> {
+        // Générer la représentation des données à signer
+        let message = self.to_bytes_for_signing()?;
         
-        // Reconstruire la clé de signature
-        let signing_key = SigningKey::from_bytes(&private_key_bytes.try_into()
-            .context("Longueur de clé privée invalide")?);
-            
-        // Définir le schéma de signature et signer
-        tx.signature_scheme = SignatureScheme::Ed25519;
-        tx.sign_ed25519(&signing_key)?;
+        // Signer les données
+        let signature = signing_key.sign(&message);
+        
+        // Enregistrer la signature
+        self.signature = Some(signature.to_bytes().to_vec());
+        self.signature_scheme = SignatureScheme::Ed25519;
         
         Ok(())
     }
-    
-    /// Met à jour le nonce du portefeuille
-    pub fn update_nonce(&mut self, new_nonce: u64) {
-        self.current_nonce = new_nonce;
+
+    /// Convertit la transaction en octets pour signature
+    pub fn to_bytes_for_signing(&self) -> Result<Vec<u8>> {
+        // Créer une copie temporaire sans signature
+        let unsigned = Transaction {
+            transaction_type: self.transaction_type,
+            sender: self.sender.clone(),
+            recipient: self.recipient.clone(),
+            amount: self.amount,
+            fee: self.fee,
+            nonce: self.nonce,
+            timestamp: self.timestamp,
+            data: self.data.clone(),
+            signature_scheme: self.signature_scheme,
+            signature: None, // La signature est toujours None pour la vérification
+        };
+        
+        // Sérialiser la transaction
+        bincode::serialize(&unsigned)
+            .context("Échec de sérialisation de la transaction pour signature")
     }
-    
-    /// Vérifie si une transaction a été signée par ce portefeuille
-    pub fn verify_own_transaction(&self, tx: &Transaction) -> Result<bool> {
-        // Convertir la clé publique du portefeuille en octets
-        let wallet_public_key = hex_to_bytes(&self.keys.public_key)?;
-        
-        // Vérifier que la transaction a bien été envoyée par ce portefeuille
-        if tx.sender != wallet_public_key {
-            return Ok(false);
+
+    /// Vérifie la signature de la transaction
+    pub fn verify_signature(&self) -> Result<bool> {
+        match self.signature_scheme {
+            SignatureScheme::Ed25519 => self.verify_ed25519(),
+            SignatureScheme::ECDSA => {
+                // Non implémenté pour l'instant
+                bail!("La vérification de signature ECDSA n'est pas encore implémentée")
+            }
+            SignatureScheme::None => Ok(false),
         }
+    }
+
+    /// Vérifie une signature Ed25519
+    fn verify_ed25519(&self) -> Result<bool> {
+        // Vérifier que la signature existe
+        let signature_bytes = match &self.signature {
+            Some(sig) => sig,
+            None => return Ok(false),
+        };
         
-        // Vérifier la signature de la transaction
-        tx.verify_signature()
+        // Reconstruire la signature
+        let signature = match Signature::from_bytes(signature_bytes.as_slice()) {
+            Ok(sig) => sig,
+            Err(_) => return Ok(false),
+        };
+        
+        // Reconstruire la clé publique
+        let verifying_key = match VerifyingKey::from_bytes(self.sender.as_slice()) {
+            Ok(key) => key,
+            Err(_) => return Ok(false),
+        };
+        
+        // Obtenir les données signées
+        let message = self.to_bytes_for_signing()?;
+        
+        // Vérifier la signature
+        match verifying_key.verify(&message, &signature) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// Calculer l'ID de la transaction (hash)
+    pub fn get_id(&self) -> Result<Vec<u8>> {
+        use sha2::{Sha256, Digest};
+        
+        let bytes = bincode::serialize(self)
+            .context("Échec de sérialisation de la transaction pour l'ID")?;
+            
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        
+        Ok(hasher.finalize().to_vec())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-    
-    #[test]
-    fn test_wallet_creation() {
-        let wallet = Wallet::new().unwrap();
-        
-        // Vérifier que les clés ont été générées
-        assert!(!wallet.keys.private_key.is_empty());
-        assert!(!wallet.keys.public_key.is_empty());
-        assert!(!wallet.keys.address.is_empty());
-    }
-    
-    #[test]
-    fn test_wallet_save_and_load() {
-        let temp_dir = tempdir().unwrap();
-        let wallet_path = temp_dir.path().join("test_wallet.json");
-        
-        // Créer et sauvegarder un portefeuille
-        let mut wallet = Wallet::new().unwrap();
-        wallet.save(&wallet_path).unwrap();
-        
-        // Charger le portefeuille
-        let loaded_wallet = Wallet::load(&wallet_path).unwrap();
-        
-        // Vérifier que les clés sont identiques
-        assert_eq!(wallet.keys.private_key, loaded_wallet.keys.private_key);
-        assert_eq!(wallet.keys.public_key, loaded_wallet.keys.public_key);
-        assert_eq!(wallet.keys.address, loaded_wallet.keys.address);
-    }
-    
-    #[test]
-    fn test_transaction_creation_and_verification() {
-        let mut wallet = Wallet::new().unwrap();
-        
-        // Créer une transaction
-        let tx = wallet.create_transaction(
-            None,
-            100,
-            10,
-            TransactionType::Transfer,
-            vec![],
-        ).unwrap();
-        
-        // Vérifier la signature
-        assert!(wallet.verify_own_transaction(&tx).unwrap());
-        
-        // Vérifier que le nonce a été incrémenté
-        assert_eq!(wallet.current_nonce, 1);
-    }
+/// Macro utilitaire pour faciliter la définition d'erreurs
+#[macro_export]
+macro_rules! bail {
+    ($msg:expr) => {
+        return Err(anyhow::anyhow!($msg))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return Err(anyhow::anyhow!($fmt, $($arg)*))
+    };
 }
