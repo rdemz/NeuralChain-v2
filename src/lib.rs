@@ -12,6 +12,3 @@ pub use block::Block;
 pub use blockchain::{Blockchain, BlockchainState};
 pub use transaction::{Transaction, TransactionType, SignatureScheme};
 pub use wallet::Wallet;
-
-// Re-export des macros
-pub use crate::bail;
