@@ -1,25 +1,20 @@
-use neuralchain::{Blockchain, Wallet};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use neuralchain::{
+    blockchain::Blockchain,
+    cli::CLI,
+};
+use std::sync::{Arc, Mutex};
+use anyhow::Result;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Initialiser la journalisation
+fn main() -> Result<()> {
     println!("Démarrage de NeuralChain v2...");
     
-    // Initialiser la blockchain (ajout du préfixe underscore pour indiquer qu'elle est intentionnellement non utilisée)
-    let _blockchain = Arc::new(Mutex::new(Blockchain::new()));
+    // Initialisation de la blockchain
+    let blockchain = Arc::new(Mutex::new(Blockchain::new()?));
     println!("Blockchain initialisée avec le bloc de genèse");
     
-    // Exemple: Créer un portefeuille
-    match Wallet::new() {
-        Ok(wallet) => {
-            println!("Portefeuille créé avec l'adresse: {}", wallet.get_address());
-        },
-        Err(e) => {
-            eprintln!("Erreur lors de la création du portefeuille: {}", e);
-        }
-    }
+    // Création et exécution de l'interface CLI
+    let mut cli = CLI::new(blockchain);
+    cli.run()?;
     
     println!("NeuralChain v2 arrêté proprement");
     Ok(())
