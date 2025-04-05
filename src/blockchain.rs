@@ -27,6 +27,13 @@ pub struct Blockchain {
     state: BlockchainState,
 }
 
+// Implémentation de Default comme recommandé par Clippy
+impl Default for Blockchain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Blockchain {
     /// Crée une nouvelle blockchain vide
     pub fn new_empty() -> Self {
