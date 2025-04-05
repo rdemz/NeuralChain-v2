@@ -1,8 +1,6 @@
 use crate::block::Block;
-use anyhow::{Result, Context, bail};
+use anyhow::{Result, bail};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// État de la blockchain
 #[derive(Debug, Clone, PartialEq)]
@@ -185,4 +183,15 @@ mod tests {
         blockchain.set_state(BlockchainState::Error);
         assert_eq!(blockchain.get_state(), BlockchainState::Error);
     }
+}
+
+/// Macro utilitaire pour faciliter la définition d'erreurs
+#[macro_export]
+macro_rules! bail {
+    ($msg:expr) => {
+        return Err(anyhow::anyhow!($msg))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return Err(anyhow::anyhow!($fmt, $($arg)*))
+    };
 }
