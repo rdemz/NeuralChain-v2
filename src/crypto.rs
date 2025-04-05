@@ -24,25 +24,30 @@ pub fn verify_signature(
 ) -> Result<bool> {
     use ed25519_dalek::VerifyingKey;
     
-    // Correction: Convertir correctement les tableaux d'octets
-    let public_key = if public_key_bytes.len() == 32 {
-        match VerifyingKey::from_bytes(public_key_bytes.try_into().unwrap_or(&[0; 32])) {
-            Ok(key) => key,
-            Err(_) => return Ok(false),
-        }
-    } else {
+    // Convertir la clé publique
+    if public_key_bytes.len() != 32 {
         return Ok(false);
+    }
+    
+    let mut key_bytes = [0u8; 32];
+    key_bytes.copy_from_slice(public_key_bytes);
+    
+    let public_key = match VerifyingKey::from_bytes(&key_bytes) {
+        Ok(key) => key,
+        Err(_) => return Ok(false),
     };
     
-    let signature = if signature_bytes.len() == 64 {
-        match Signature::from_bytes(signature_bytes.try_into().unwrap_or(&[0; 64])) {
-            Ok(sig) => sig,
-            Err(_) => return Ok(false),
-        }
-    } else {
+    // Convertir la signature
+    if signature_bytes.len() != 64 {
         return Ok(false);
-    };
+    }
     
+    let mut sig_bytes = [0u8; 64];
+    sig_bytes.copy_from_slice(signature_bytes);
+    
+    let signature = Signature::from_bytes(&sig_bytes);
+    
+    // Vérifier la signature
     match public_key.verify(data, &signature) {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
