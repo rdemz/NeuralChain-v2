@@ -139,13 +139,21 @@ impl Transaction {
         };
         
         // Reconstruire la signature
-        let signature = match Signature::from_slice(signature_bytes) {
+        if signature_bytes.len() != 64 {
+            return Ok(false);
+        }
+        
+        let signature = match Signature::from_bytes(signature_bytes.as_slice().try_into().unwrap_or(&[0; 64])) {
             Ok(sig) => sig,
             Err(_) => return Ok(false),
         };
         
         // Reconstruire la clé publique
-        let verifying_key = match VerifyingKey::from_slice(&self.sender) {
+        if self.sender.len() != 32 {
+            return Ok(false);
+        }
+        
+        let verifying_key = match VerifyingKey::from_bytes(self.sender.as_slice().try_into().unwrap_or(&[0; 32])) {
             Ok(key) => key,
             Err(_) => return Ok(false),
         };
