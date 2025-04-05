@@ -12,11 +12,17 @@ categories = ["cryptography", "finance", "network-programming"]
 
 [dependencies]
 # Dépendances fondamentales
-tokio = { version = "1.28", features = ["full"] }
-futures = "0.3"
-async-trait = "0.1"
+anyhow = "1.0"
+bincode = "1.3"
+ed25519-dalek = "2.0"
+hex = "0.4"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tokio = { version = "1.25", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = "0.3"
 
 # Cryptographie et sérialisation
 sha2 = "0.10"
@@ -53,6 +59,7 @@ tokio-test = "0.4"
 proptest = "1.1"
 mockall = "0.11"
 test-log = "0.2"
+tempfile = "3.5"
 
 [profile.release]
 lto = true
