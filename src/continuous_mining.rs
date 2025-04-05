@@ -24,9 +24,12 @@ pub struct ContinuousMining {
 struct SimpleLogger;
 
 impl SimpleLogger {
+    #[allow(dead_code)] // Clippy fix: allow unused functions
     fn error(msg: &str) {
         eprintln!("ERROR: {}", msg);
     }
+    
+    #[allow(dead_code)] // Clippy fix: allow unused functions
     fn info(msg: &str) {
         println!("INFO: {}", msg);
     }
