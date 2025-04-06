@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use std::collections::{HashMap, HashSet};
 use parking_lot::{RwLock, Mutex};
 
+pub mod bios_runtime;
 pub mod neuralchain_core;
 pub mod cortical_hub;
 pub mod hormonal_field;
