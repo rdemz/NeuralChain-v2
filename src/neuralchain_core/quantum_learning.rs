@@ -2469,7 +2469,7 @@ pub fn optimize_for_windows(&self) -> Result<f64, String> {
         }
         
         Ok(improvement_factor)
-    }
+    
     
     /// Version portable de l'optimisation
     #[cfg(not(target_os = "windows"))]
