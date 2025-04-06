@@ -2383,11 +2383,7 @@ impl QuantumLearning {
         
         let mut improvement_factor = 1.0;
         
-        unsafe {
-            // 1. Optimiser la priorité du processus
-             ProcessPriorityManager::increase_process_priority()?;
-                improvement_factor *= 1.15;
-            }
+        ProcessPriorityManager::increase_process_priority()?;
             
             // 2. Vérifier si des instructions AVX avancées sont disponibles
             if is_x86_feature_detected!("avx2") {
