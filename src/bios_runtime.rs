@@ -3,7 +3,7 @@ use crate::neuralchain_core::{
     cortical_hub::CorticalHub,
     emergent_consciousness::ConsciousnessEngine,
     evolutionary_genesis::EvolutionaryGenesis,
-    neural_organism_bootstrap::NeuralOrganismBootstrap, // Modifié
+    neural_organism_bootstrap::neuralorganismbootstrap, // Modifié
     neural_interconnect::NeuralInterconnect,
     quantum_organism::QuantumOrganism,
     unified_integration::UnifiedIntegration, // Modifié
