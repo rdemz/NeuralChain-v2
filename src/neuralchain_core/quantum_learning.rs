@@ -2420,64 +2420,79 @@ pub fn optimize_for_windows(&self) -> Result<f64, String> {
     let elapsed = (end - start) as f64 / frequency as f64;
     
     Ok(improvement_factor)
-} // Accolade fermante pour la fonction
-            
-            // 3. Utiliser le timer haute performance pour la mesure précise
-            let mut frequency = 0i64;
-            let mut start_time = 0i64;
-            let mut end_time = 0i64;
-            
-            QueryPerformanceFrequency(&mut frequency);
-            QueryPerformanceCounter(&mut start_time);
-            
-            // Simuler un travail intense
-            let mut sum = 0.0;
-            for i in 0..1000 {
-                sum += (i as f64).sqrt();
-            }
-            
-            QueryPerformanceCounter(&mut end_time);
-            
-            let elapsed = (end_time - start_time) as f64 / frequency as f64;
-            if elapsed < 0.001 {
-                // Si l'exécution est très rapide, augmenter le facteur d'amélioration
-                improvement_factor *= 1.1;
-            }
-            
-            // 4. Optimiser les caches pour les modèles fréquemment utilisés
-            let models: Vec<String> = self.models.iter()
-                .map(|entry| entry.key().clone())
-                .collect();
-                
-            // Pré-charger les modèles les plus utilisés dans le cache CPU
-            for model_id in models.iter().take(3) {
-                if let Some(model) = self.models.get(model_id) {
-                    // Simuler un préchargement en lisant les paramètres
-                    let _params = model.parameters.read();
-                    
-                    // Précharger les paramètres dans le cache L1/L2
-                    for param in _params.values() {
-                        if !param.is_empty() {
-                            // Simuler un préchargement
-                            _mm_prefetch(param.as_ptr() as *const i8, _MM_HINT_T0);
-                        }
-                    }
+// 3. Utiliser le timer haute performance pour la mesure précise
+use crate::neuralchain_core::system_utils::high_precision;
+
+let start_time = high_precision::get_performance_counter();
+let frequency = high_precision::get_performance_frequency();
+
+// Simuler un travail intense
+let mut sum = 0.0;
+for i in 0..1000 {
+    sum += (i as f64).sqrt();
+}
+
+let end_time = high_precision::get_performance_counter();
+
+let elapsed = (end_time - start_time) as f64 / frequency as f64;
+if elapsed < 0.001 {
+    // Si l'exécution est très rapide, augmenter le facteur d'amélioration
+    improvement_factor *= 1.1;
+}
+
+// 4. Optimiser les caches pour les modèles fréquemment utilisés
+let models: Vec<String> = self.models.iter()
+    .map(|entry| entry.key().clone())
+    .collect();
+    
+// Pré-charger les modèles les plus utilisés dans le cache CPU
+for model_id in models.iter().take(3) {
+    if let Some(model) = self.models.get(model_id) {
+        // Simuler un préchargement en lisant les paramètres
+        let _params = model.parameters.read();
+        
+        // Précharger les paramètres dans le cache L1/L2
+        for param in _params.values() {
+            if !param.is_empty() {
+                unsafe {
+                    // Simuler un préchargement
+                    _mm_prefetch(param.as_ptr() as *const i8, _MM_HINT_T0);
                 }
             }
-            
- improvement_factor *= 1.05; // 5% de plus pour l'optimisation du cache
-    
-    Ok(improvement_factor)
-} // Fermeture de la fonction optimize_for_windows pour Windows
-    
-    
-    /// Version portable de l'optimisation
-    #[cfg(not(target_os = "windows"))]
-    pub fn optimize_for_windows(&self) -> Result<f64, String> {
-        // Pas d'optimisations spéciales sur les plateformes non-Windows
-        Ok(1.0)
+        }
     }
+}
 
+improvement_factor *= 1.05; // 5% de plus pour l'optimisation du cache
+
+Ok(improvement_factor)
+} // Fermeture de la fonction optimize_for_windows pour Windows
+
+
+/// Version portable de l'optimisation
+#[cfg(not(target_os = "windows"))]
+pub fn optimize_for_windows(&self) -> Result<f64, String> {
+    // Pas d'optimisations spéciales sur les plateformes non-Windows
+    Ok(1.0)
+}
+
+
+/// Optimise un thread d'inférence pour Windows
+#[cfg(target_os = "windows")]
+fn optimize_inference_thread() -> Result<(), String> {
+    use crate::neuralchain_core::system_utils::PerformanceOptimizer;
+    
+    PerformanceOptimizer::optimize_thread_priority()?;
+    
+    Ok(())
+}
+
+/// Version portable de l'optimisation de thread
+#[cfg(not(target_os = "windows"))]
+fn optimize_inference_thread() -> Result<(), String> {
+    // Implémentation générique pour les autres plateformes
+    Ok(())
+}
 
 /// Optimise un thread d'inférence pour Windows
 #[cfg(target_os = "windows")]
