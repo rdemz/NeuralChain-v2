@@ -15,19 +15,34 @@ use parking_lot::{RwLock, Mutex};
 pub mod bios_runtime;
 pub mod neuralchain_core;
 
-use neuralchain_core::quantum_organism::QuantumOrganism;
-use cortical_hub::CorticalHub;
-use hormonal_field::{HormonalField, HormoneType};
-use neuralchain_core::emergent_consciousness::ConsciousnessEngine;
-use bios_time::BiosTime;
-use neuralchain_core::quantum_entanglement::QuantumEntanglement;
-use neuralchain_core::hyperdimensional_adaptation::HyperdimensionalAdapter;
-use neuralchain_core::temporal_manifold::TemporalManifold;
-use neuralchain_core::synthetic_reality::SyntheticRealityManager;
-use neuralchain_core::immune_guard::ImmuneGuard;
-use neuralchain_core::neural_interconnect::{NeuralInterconnect, OperationMode as InterconnectMode};
-use neuralchain_core::quantum_hyperconvergence::{QuantumHyperconvergence, OperationMode as HyperconvergenceMode};
-use neuralchain_core::unified_integration::{UnifiedIntegration, UnifiedOperationMode};
+// Dépendances pour .choose(), .gen(), .uuid
+use rand::prelude::*;
+use rand::seq::SliceRandom;
+use rand::Rng;
+use uuid::Uuid;
+
+// Re-export de modules si besoin
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
+use std::collections::{HashMap, HashSet};
+use parking_lot::{RwLock, Mutex};
+
+// Si tu veux accéder à des structures internes depuis ici :
+use crate::neuralchain_core::cortical_hub::CorticalHub;
+use crate::neuralchain_core::hormonal_field::{HormonalField, HormoneType};
+use crate::neuralchain_core::emergent_consciousness::ConsciousnessEngine;
+use crate::neuralchain_core::quantum_entanglement::QuantumEntanglement;
+use crate::neuralchain_core::quantum_learning::QuantumLearning;
+use crate::neuralchain_core::temporal_manifold::TemporalManifold;
+use crate::neuralchain_core::immune_guard::ImmuneGuard;
+use crate::neuralchain_core::neural_interconnect::{NeuralInterconnect, OperationMode as InterconnectMode};
+use crate::neuralchain_core::quantum_hyperconvergence::{QuantumHyperconvergence, OperationMode as HyperconvergenceMode};
+use crate::neuralchain_core::unified_integration::{UnifiedIntegration, UnifiedOperationMode};
+use crate::neuralchain_core::synthetic_reality::SyntheticRealityManager;
+use crate::neuralchain_core::hyperdimentional_adaptation::HyperdimensionalAdapter;
+use crate::neuralchain_core::quantum_organism::QuantumOrganism;
+use crate::neuralchain_core::bios_time::BiosTime; // si ce module existe
 
 /// Niveau de conscience du système
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
