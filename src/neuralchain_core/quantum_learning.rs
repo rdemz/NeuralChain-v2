@@ -2468,8 +2468,7 @@ fn optimize_inference_thread() {
     
     unsafe {
         // Augmenter la priorité du thread
-        let current_thread = GetCurrentThread();
-        SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST);
+        PerformanceOptimizer::optimize_thread_priority()?;
     }
 }
 
