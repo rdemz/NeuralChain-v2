@@ -2377,13 +2377,7 @@ impl QuantumLearning {
     #[cfg(target_os = "windows")]
     pub fn optimize_for_windows(&self) -> Result<f64, String> {
        use crate::neuralchain_core::system_utils::{ProcessPriorityManager, high_precision};
-        use windows_sys::Win32::System::Threading::{
-            GetCurrentProcessId, SetPriorityClass, HIGH_PRIORITY_CLASS, // ou NORMAL_PRIORITY_CLASS
-            NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, ABOVE_NORMAL_PRIORITY_CLASS
-        };
-        use windows_sys::Win32::System::Performance::{
-           use std::time::Instant;
-        };
+        
         use std::arch::x86_64::*;
         
         let mut improvement_factor = 1.0;
