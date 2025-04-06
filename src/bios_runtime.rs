@@ -3,7 +3,7 @@ use crate::neuralchain_core::{
     cortical_hub::CorticalHub,
     emergent_consciousness::ConsciousnessEngine,
     evolutionary_genesis::EvolutionaryGenesis,
-    neural_organism_bootstrap::neuralorganismbootstrap, // Modifié
+    neural_organism_bootstrap::NeuralOrganism,
     neural_interconnect::NeuralInterconnect,
     quantum_organism::QuantumOrganism,
     unified_integration::UnifiedIntegration, // Modifié
@@ -92,7 +92,7 @@ pub fn initialize_bios_runtime() -> Result<Arc<BiosRuntime>, String> {
     ));
     
     // Bootstrap de l'organisme neural
-    let neural_bootstrap = Arc::new(NeuralOrganismBootstrap::new( // Modifié
+    let neural_organism_bootstrap = Arc::new(NeuralOrganism::new(
         quantum_organism.clone(),
         cortical_hub.clone()
     ));
@@ -146,7 +146,7 @@ pub struct BiosRuntime {
     /// Système d'autorégulation
     pub autoregulation: Arc<Autoregulation>,
     /// Bootstrapper de l'organisme neural
-    pub neural_bootstrap: Arc<NeuralOrganismBootstrap>, // Ajouté
+    pub neural_organism_bootstrap: Arc<NeuralOrganism>,
     /// État d'initialisation
     pub is_initialized: RwLock<bool>,
     /// Temps de démarrage
