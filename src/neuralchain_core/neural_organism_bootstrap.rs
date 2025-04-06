@@ -10,12 +10,12 @@ use std::thread;
 use std::time::Duration;
 
 use crate::neuralchain_core::quantum_organism::QuantumOrganism;
-use crate::cortical_hub::CorticalHub;
-use crate::hormonal_field::HormonalField;
+use crate::neuralchain_core::cortical_hub::CorticalHub;
+use crate::neuralchain_core::hormonal_field::HormonalField;
 use crate::neuralchain_core::emergent_consciousness::ConsciousnessEngine;
 use crate::neuralchain_core::neural_dream::NeuralDream;
-use crate::metasynapse::MetaSynapse;
-use crate::bios_time::BiosTime;
+use crate::neuralchain_core::metasynapse::MetaSynapse;
+use crate::neuralchain_core::bios_time::BiosTime;
 use crate::immune_guard::mirror_core::MirrorCore;
 use crate::neuralchain_core::quantum_entanglement::{QuantumEntanglement, integrate_quantum_entanglement};
 use crate::neuralchain_core::dream_bootstrap::initialize_dream_system;
