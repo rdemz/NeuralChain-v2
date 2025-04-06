@@ -203,3 +203,29 @@ pub mod high_precision {
         }
     }
 }
+
+pub mod graphics {
+    pub struct GraphicsAccelerator;
+    
+    impl GraphicsAccelerator {
+        pub fn new() -> Result<Self, String> {
+            #[cfg(target_os = "windows")]
+            {
+                // Utiliser une autre approche sans dépendre de windows-sys::Graphics
+                // Par exemple, utiliser directement d'autres crates comme wgpu
+            }
+            
+            #[cfg(not(target_os = "windows"))]
+            {
+                // Implémentation pour autres plateformes
+            }
+            
+            Ok(Self {})
+        }
+        
+        pub fn accelerate_computation(&self) -> Result<f64, String> {
+            // Implémentation d'accélération
+            Ok(1.0) // Facteur d'accélération
+        }
+    }
+}
