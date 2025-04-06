@@ -17,7 +17,7 @@ use crate::neuralchain_core::neural_dream::NeuralDream;
 use crate::neuralchain_core::metasynapse::MetaSynapse;
 use crate::neuralchain_core::bios_time::BiosTime;
 use crate::neuralchain_core::mirror_core::MirrorCore;
-use crate::neuralchain_core::quantum_entanglement::{QuantumEntanglement, integrate_quantum_entanglement};
+use crate::neuralchain_core::quantum_entanglement::QuantumEntanglement;
 use crate::neuralchain_core::dream_bootstrap::initialize_dream_system;
 
 /// Configuration du processus d'amorçage
