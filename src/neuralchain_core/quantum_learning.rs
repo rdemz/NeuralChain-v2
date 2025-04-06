@@ -2377,11 +2377,11 @@ impl QuantumLearning {
     #[cfg(target_os = "windows")]
     pub fn optimize_for_windows(&self) -> Result<f64, String> {
         use windows_sys::Win32::System::Threading::{
-            GetCurrentProcess, SetPriorityClass, PROCESS_PRIORITY_CLASS, 
+            GetCurrentProcessId, SetPriorityClass, HIGH_PRIORITY_CLASS, // ou NORMAL_PRIORITY_CLASS
             NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, ABOVE_NORMAL_PRIORITY_CLASS
         };
         use windows_sys::Win32::System::Performance::{
-            QueryPerformanceCounter, QueryPerformanceFrequency
+           use std::time::Instant;
         };
         use std::arch::x86_64::*;
         
