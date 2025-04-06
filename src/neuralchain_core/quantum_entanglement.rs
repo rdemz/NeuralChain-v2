@@ -3727,7 +3727,7 @@ impl QuantumEntanglement {
         
         Ok(key_bytes)
     }
-}
+
 
 /// Fonction d'intégration avec l'organisme principal
 pub fn integrate_quantum_entanglement(
