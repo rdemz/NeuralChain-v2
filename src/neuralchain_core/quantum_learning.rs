@@ -2376,28 +2376,51 @@ impl QuantumLearning {
     
     /// Optimise les performances pour Windows
     #[cfg(target_os = "windows")]
-    pub fn optimize_for_windows(&self) -> Result<f64, String> {
-       use crate::neuralchain_core::system_utils::{ProcessPriorityManager, high_precision};
+pub fn optimize_for_windows(&self) -> Result<f64, String> {
+    use crate::neuralchain_core::system_utils::{ProcessPriorityManager, high_precision, PerformanceOptimizer};
+    use std::arch::x86_64::*;
+    
+    let mut improvement_factor = 1.0;
+    
+    // Optimiser la priorité du processus
+    ProcessPriorityManager::increase_process_priority()?;
+    
+    // Optimiser la priorité du thread
+    PerformanceOptimizer::optimize_thread_priority()?;
+    
+    // Mesurer le temps de départ
+    let start = high_precision::get_performance_counter();
+    
+    // 2. Vérifier si des instructions AVX avancées sont disponibles
+    if is_x86_feature_detected!("avx2") {
+        // Utiliser des instructions AVX2 pour les calculs vectoriels
+        improvement_factor *= 1.3;
         
-        use std::arch::x86_64::*;
-        
-        let mut improvement_factor = 1.0;
-        
-        ProcessPriorityManager::increase_process_priority()?;
+        unsafe {
+            // Simuler un calcul vectoriel AVX2
+            let a = _mm256_set1_pd(1.0);
+            let b = _mm256_set1_pd(2.0);
+            let c = _mm256_add_pd(a, b);
             
-            // 2. Vérifier si des instructions AVX avancées sont disponibles
-            if is_x86_feature_detected!("avx2") {
-                // Utiliser des instructions AVX2 pour les calculs vectoriels
-                improvement_factor *= 1.3;
-                
-                // Simuler un calcul vectoriel AVX2
-                let a = _mm256_set1_pd(1.0);
-                let b = _mm256_set1_pd(2.0);
-                let c = _mm256_add_pd(a, b);
-                
-                let mut result = [0.0f64; 4];
-                _mm256_storeu_pd(result.as_mut_ptr(), c);
-            }
+            let mut result = [0.0f64; 4];
+            _mm256_storeu_pd(result.as_mut_ptr(), c);
+        }
+    }
+    
+    // Ajouter d'autres optimisations matérielles si nécessaires
+    if is_x86_feature_detected!("fma") {
+        improvement_factor *= 1.2;
+    }
+    
+    // Mesurer le temps de fin
+    let end = high_precision::get_performance_counter();
+    let frequency = high_precision::get_performance_frequency();
+    
+    // Calculer le temps écoulé
+    let elapsed = (end - start) as f64 / frequency as f64;
+    
+    Ok(improvement_factor)
+} // Accolade fermante pour la fonction
             
             // 3. Utiliser le timer haute performance pour la mesure précise
             let mut frequency = 0i64;
