@@ -2477,7 +2477,7 @@ pub fn optimize_for_windows(&self) -> Result<f64, String> {
         // Pas d'optimisations spéciales sur les plateformes non-Windows
         Ok(1.0)
     }
-}
+
 
 /// Optimise un thread d'inférence pour Windows
 #[cfg(target_os = "windows")]
