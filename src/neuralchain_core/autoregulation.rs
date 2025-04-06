@@ -20,7 +20,7 @@ use crate::neuralchain_core::quantum_organism::QuantumOrganism;
 use crate::neuralchain_core::cortical_hub::CorticalHub;
 use crate::neuralchain_core::hormonal_field::{HormonalField, HormoneType};
 use crate::neuralchain_core::emergent_consciousness::ConsciousnessEngine;
-use crate::bios_time::BiosTime;
+use crate::bios_time::neuralchain_core::BiosTime;
 
 /// Paramètre autorégulé
 #[derive(Debug, Clone)]
