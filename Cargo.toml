@@ -27,15 +27,14 @@ windows-sys = { version = "0.48", features = [
     "Win32_System_Performance",
     "Win32_System_SystemInformation",
     "Win32_System_Diagnostics_Debug",
-    "Win32_Foundation"
+    "Win32_Foundation",
+    "Win32_Graphics",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi"
 ]}
 
-# (Optionnel futur)
-# blake3 = "1.3"
-# ed25519-dalek = "1"
-# libp2p = { version = "0.53", optional = true }
-
 [features]
+default = []
 
 [[bin]]
 name = "neuralchain"
