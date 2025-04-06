@@ -2384,8 +2384,7 @@ impl QuantumLearning {
         
         unsafe {
             // 1. Optimiser la priorité du processus
-            let process = GetCurrentProcess();
-            if SetPriorityClass(process, ABOVE_NORMAL_PRIORITY_CLASS) != 0 {
+             ProcessPriorityManager::increase_process_priority()?;
                 improvement_factor *= 1.15;
             }
             
