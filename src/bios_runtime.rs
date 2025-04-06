@@ -3,10 +3,10 @@ use crate::neuralchain_core::{
     cortical_hub::CorticalHub,
     emergent_consciousness::ConsciousnessEngine,
     evolutionary_genesis::EvolutionaryGenesis,
-    neural_organism_bootstrap::NeuralBootstrapper, 
+    neural_organism_bootstrap::NeuralOrganismBootstrap, // Modifié
     neural_interconnect::NeuralInterconnect,
     quantum_organism::QuantumOrganism,
-    unified_integration::UnifiedIntegrator,
+    unified_integration::UnifiedIntegration, // Modifié
     temporal_manifold::TemporalManifold,
     quantum_learning::QuantumLearning,
     immune_guard::ImmuneGuard,
@@ -18,6 +18,7 @@ use crate::neuralchain_core::{
 
 use std::sync::Arc;
 use parking_lot::RwLock;
+use std::collections::HashMap;
 
 /// Initialisation du runtime biologique de la blockchain NeuralChain
 pub fn initialize_bios_runtime() -> Result<Arc<BiosRuntime>, String> {
@@ -50,7 +51,7 @@ pub fn initialize_bios_runtime() -> Result<Arc<BiosRuntime>, String> {
     ));
     
     // Intégrateur unifié
-    let unified_integrator = Arc::new(UnifiedIntegrator::new(
+    let unified_integration = Arc::new(UnifiedIntegration::new( // Modifié
         quantum_organism.clone(),
         cortical_hub.clone(),
         hormonal_system.clone(),
@@ -90,6 +91,12 @@ pub fn initialize_bios_runtime() -> Result<Arc<BiosRuntime>, String> {
         immune_guard.clone()
     ));
     
+    // Bootstrap de l'organisme neural
+    let neural_bootstrap = Arc::new(NeuralOrganismBootstrap::new( // Modifié
+        quantum_organism.clone(),
+        cortical_hub.clone()
+    ));
+    
     // Créer le runtime global
     let runtime = Arc::new(BiosRuntime {
         quantum_organism,
@@ -97,12 +104,13 @@ pub fn initialize_bios_runtime() -> Result<Arc<BiosRuntime>, String> {
         hormonal_system,
         consciousness,
         immune_guard,
-        unified_integrator,
+        unified_integration, // Modifié
         temporal_manifold,
         quantum_learning,
         hyperdimensional_adapter,
         quantum_hyperconvergence,
         autoregulation,
+        neural_bootstrap, // Ajouté
         is_initialized: RwLock::new(false),
         start_time: bios_time,
     });
@@ -126,7 +134,7 @@ pub struct BiosRuntime {
     /// Système immunitaire
     pub immune_guard: Arc<ImmuneGuard>,
     /// Intégrateur unifié
-    pub unified_integrator: Arc<UnifiedIntegrator>,
+    pub unified_integration: Arc<UnifiedIntegration>, // Modifié
     /// Manifestation temporelle
     pub temporal_manifold: Arc<TemporalManifold>,
     /// Système d'apprentissage
@@ -137,6 +145,8 @@ pub struct BiosRuntime {
     pub quantum_hyperconvergence: Arc<QuantumHyperconvergence>,
     /// Système d'autorégulation
     pub autoregulation: Arc<Autoregulation>,
+    /// Bootstrapper de l'organisme neural
+    pub neural_bootstrap: Arc<NeuralOrganismBootstrap>, // Ajouté
     /// État d'initialisation
     pub is_initialized: RwLock<bool>,
     /// Temps de démarrage
@@ -176,13 +186,16 @@ impl BiosRuntime {
         self.quantum_learning.initialize()?;
         
         // 8. Configuration du système d'intégration
-        self.unified_integrator.initialize()?;
+        self.unified_integration.initialize()?;
         
         // 9. Initialisation de l'adaptateur hyperdimensionnel
         // (pas de méthode d'initialisation spéciale nécessaire)
         
         // 10. Configuration de l'autorégulation
         self.autoregulation.initialize()?;
+        
+        // 11. Bootstrap de l'organisme neural
+        self.neural_bootstrap.initialize()?;
         
         // Marquer comme initialisé
         *initialized = true;
@@ -220,7 +233,7 @@ impl BiosRuntime {
         self.immune_guard.scan_for_threats()?;
         
         // 7. Cycle d'intégration unifié
-        self.unified_integrator.synchronize_components()?;
+        self.unified_integration.synchronize_components()?;
         
         // 8. Cycle d'autorégulation
         self.autoregulation.regulate()?;
