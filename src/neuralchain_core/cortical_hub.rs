@@ -8,7 +8,7 @@ use dashmap::DashMap;
 use rayon::prelude::*;
 
 use crate::neuralchain_core::quantum_organism::QuantumOrganism;
-use crate::bios_time::CircadianPhase;
+use crate::neuralchain_core::bios_time::CircadianPhase;
 
 /// Types de neurones spécialisés
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
