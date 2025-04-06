@@ -17,8 +17,8 @@ use rayon::prelude::*;
 use dashmap::DashMap;
 
 use crate::neuralchain_core::quantum_organism::QuantumOrganism;
-use crate::cortical_hub::CorticalHub;
-use crate::hormonal_field::{HormonalField, HormoneType};
+use crate::neuralchain_core::cortical_hub::CorticalHub;
+use crate::neuralchain_core::hormonal_field::{HormonalField, HormoneType};
 use crate::neuralchain_core::emergent_consciousness::ConsciousnessEngine;
 use crate::bios_time::BiosTime;
 
