@@ -958,10 +958,7 @@ impl Autoregulation {
     /// Obtient la charge CPU actuelle du système
     #[cfg(target_os = "windows")]
     fn get_system_cpu_load(&self) -> f64 {
-        use windows_sys::Win32::System::Performance::{
-            PDH_FMT_DOUBLE, PdhAddEnglishCounterA, PdhCollectQueryData, 
-            PdhGetFormattedCounterValue, PdhOpenQueryA, PDH_HQUERY, PDH_HCOUNTER
-        };
+        use windows_sys::Win32::System::Performance::*;
         
         let mut cpu_load = 70.0; // Valeur par défaut en cas d'échec
         
@@ -1022,8 +1019,8 @@ impl Autoregulation {
     #[cfg(target_os = "windows")]
     fn get_system_memory_usage(&self) -> f64 {
         use windows_sys::Win32::System::SystemInformation::{
-            GlobalMemoryStatusEx, MEMORYSTATUSEX
-        };
+    GlobalMemoryStatus, MEMORYSTATUS
+};
         
         unsafe {
             // Initialiser la structure
