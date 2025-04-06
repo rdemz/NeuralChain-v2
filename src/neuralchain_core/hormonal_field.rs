@@ -744,7 +744,6 @@
         
         Ok(())
     }
-}
 
 impl Default for HormonalField {
     fn default() -> Self {
