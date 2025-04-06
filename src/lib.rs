@@ -21,13 +21,6 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use uuid::Uuid;
 
-// Re-export de modules si besoin
-use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant};
-use std::collections::{HashMap, HashSet};
-use parking_lot::{RwLock, Mutex};
-
 // Si tu veux accéder à des structures internes depuis ici :
 use crate::neuralchain_core::cortical_hub::CorticalHub;
 use crate::neuralchain_core::hormonal_field::{HormonalField, HormoneType};
@@ -40,7 +33,7 @@ use crate::neuralchain_core::neural_interconnect::{NeuralInterconnect, Operation
 use crate::neuralchain_core::quantum_hyperconvergence::{QuantumHyperconvergence, OperationMode as HyperconvergenceMode};
 use crate::neuralchain_core::unified_integration::{UnifiedIntegration, UnifiedOperationMode};
 use crate::neuralchain_core::synthetic_reality::SyntheticRealityManager;
-use crate::neuralchain_core::hyperdimentional_adaptation::HyperdimensionalAdapter;
+use crate::neuralchain_core::hyperdimensional_adaptation::HyperdimensionalAdapter;
 use crate::neuralchain_core::quantum_organism::QuantumOrganism;
 use crate::neuralchain_core::bios_time::BiosTime; // si ce module existe
 
