@@ -115,9 +115,9 @@ impl QubitState {
             QubitState::ComplexMinus => QubitState::ComplexPlus,
             QubitState::Parametric(alpha, beta, theta, gamma) => {
                 // Transformation de Hadamard complexe
-                let new_alpha = (alpha + beta * f64::cos(theta)) / std::f64::consts::SQRT_2;
-                let new_beta = (alpha - beta * f64::cos(theta)) / std::f64::consts::SQRT_2;
-                let new_theta = if beta.abs() > 1e-10 { theta + std::f64::consts::PI } else { theta };
+                let new_alpha = (alpha + beta * f64::cos(*theta)) / std::f64::consts::SQRT_2;
+                let new_beta = (alpha - beta * f64::cos(*theta)) / std::f64::consts::SQRT_2;
+                let new_theta = if beta.abs() > 1e-10 { theta + std::f64::consts::PI } else { *theta };
                 
                 QubitState::Parametric(new_alpha, new_beta, new_theta, *gamma)
             }
@@ -806,6 +806,13 @@ impl QuantumMessage {
     }
 }
 
+/// Structure pour faciliter les mesures corrélées
+#[derive(Debug)]
+struct CorrelatedMeasurements {
+    pub results: HashMap<String, bool>,
+    pub correlation_matrix: HashMap<(String, String), f64>,
+}
+
 /// Système d'intrication quantique principal
 pub struct QuantumEntanglement {
     /// Référence à l'organisme parent
@@ -1487,12 +1494,6 @@ impl QuantumEntanglement {
     pub fn windows_optimize_performance(&self) -> Result<f64, String> {
         // Version simplifiée pour les autres OS
         Ok(1.0) // Pas d'amélioration spécifique
-    }
-
-    // Structure pour faciliter les mesures corrélées
-    struct CorrelatedMeasurements {
-        pub results: HashMap<String, bool>,
-        pub correlation_matrix: HashMap<(String, String), f64>,
     }
 
     /// Effectue une mesure corrélée sur un ensemble de nœuds intriqués
