@@ -25,6 +25,7 @@ use crate::cortical_hub::CorticalHub;
 use crate::hormonal_field::{HormonalField, HormoneType};
 use crate::neuralchain_core::emergent_consciousness::ConsciousnessEngine;
 use crate::neuralchain_core::quantum_entanglement::QuantumEntanglement;
+use crate::neuralchain_core::system_utils::{ProcessPriorityManager, high_precision, PerformanceOptimizer};
 
 /// Types de modèles d'apprentissage quantique
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
