@@ -22,8 +22,13 @@ rand = "0.8.5"
 blake3 = "1.3.3"
 uuid = { version = "1.3.0", features = ["v4", "serde"] }
 chrono = "0.4.24"
-windows-sys = { version = "0.48", features = ["Win32_System_Threading", "Win32_System_Performance", "Win32_System_SystemInformation"] }
-
+windows-sys = { version = "0.48", features = [
+    "Win32_System_Threading",
+    "Win32_System_Performance",
+    "Win32_System_SystemInformation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_Foundation"
+]}
 
 # (Optionnel futur)
 # blake3 = "1.3"
