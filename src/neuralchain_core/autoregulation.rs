@@ -1098,10 +1098,10 @@ impl Autoregulation {
 pub mod integration {
     use super::*;
     use crate::neuralchain_core::quantum_organism::QuantumOrganism;
-    use crate::cortical_hub::CorticalHub;
-    use crate::hormonal_field::HormonalField;
+    use crate::neuralchain_core::cortical_hub::CorticalHub;
+    use crate::neuralchain_core::hormonal_field::HormonalField;
     use crate::neuralchain_core::emergent_consciousness::ConsciousnessEngine;
-    use crate::bios_time::BiosTime;
+    use crate::neuralchain_core::bios_time::BiosTime;
     
     /// Intègre le système d'autorégulation à un organisme
     pub fn integrate_autoregulation(
