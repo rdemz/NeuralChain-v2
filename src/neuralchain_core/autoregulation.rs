@@ -438,9 +438,7 @@ impl Autoregulation {
     /// Optimisations spécifiques à Windows pour le thread de régulation
     #[cfg(target_os = "windows")]
     fn optimize_windows_thread(&self) {
-        use windows_sys::Win32::System::Threading::{
-    SetThreadPriorityEx, GetCurrentThreadId, THREAD_PRIORITY_ABOVE_NORMAL
-};
+        use crate::neuralchain_core::system_utils::{SystemMonitor, PerformanceOptimizer};
         
         unsafe {
             // Augmenter la priorité du thread
