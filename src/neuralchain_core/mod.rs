@@ -22,3 +22,4 @@ pub mod synthetic_reality;
 pub mod hormonal_field;
 pub mod bios_time;
 pub mod quantum_hyperconvergence;
+pub mod metasynapse;
