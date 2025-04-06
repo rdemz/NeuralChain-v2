@@ -2465,10 +2465,10 @@ pub fn optimize_for_windows(&self) -> Result<f64, String> {
                 }
             }
             
-            improvement_factor *= 1.05; // 5% de plus pour l'optimisation du cache
-        }
-        
-        Ok(improvement_factor)
+ improvement_factor *= 1.05; // 5% de plus pour l'optimisation du cache
+    
+    Ok(improvement_factor)
+} // Fermeture de la fonction optimize_for_windows pour Windows
     
     
     /// Version portable de l'optimisation
