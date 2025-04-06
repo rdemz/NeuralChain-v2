@@ -28,7 +28,7 @@ windows-sys = { version = "0.48", features = [
     "Win32_System_SystemInformation",
     "Win32_System_Diagnostics_Debug",
     "Win32_Foundation"
-]}
+], optional = true }
 
 # (Optionnel futur)
 # blake3 = "1.3"
