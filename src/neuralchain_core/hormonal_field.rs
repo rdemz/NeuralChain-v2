@@ -1,230 +1,580 @@
-    /// Met à jour les niveaux hormonaux et active les récepteurs
-    pub fn update(&self) {
-        // Calculer le temps écoulé depuis la dernière mise à jour
-        let now = Instant::now();
-        let elapsed = {
-            let mut last = self.last_update.lock();
-            let elapsed = now.duration_since(*last);
-            *last = now;
-            elapsed
+//! Module du Champ Hormonal pour NeuralChain-v2
+//!
+//! Ce système économique biomimétique régule l'économie interne de la blockchain
+//! par des signaux hormonaux qui influencent la production de blocs, les frais de transaction,
+//! la difficulté de minage et les incitations des validateurs, créant ainsi un
+//! écosystème économique auto-régulant qui s'adapte aux conditions du marché.
+//!
+//! © 2025 NeuralChain Labs - Tous droits réservés
+
+use std::sync::Arc;
+use std::collections::{HashMap, BTreeMap, HashSet};
+use std::time::{Duration, Instant};
+use parking_lot::{RwLock, Mutex};
+use rand::{thread_rng, Rng};
+use dashmap::DashMap;
+
+use crate::neuralchain_core::quantum_organism::QuantumOrganism;
+use crate::neuralchain_core::cortical_hub::CorticalHub;
+use crate::neuralchain_core::emergent_consciousness::ConsciousnessEngine;
+use crate::neuralchain_core::bios_time::{BiosTime, CircadianPhase};
+
+/// Types d'hormones régulant l'écosystème crypto
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum HormoneType {
+    /// Régule l'offre et la demande
+    MarketEquilibrium,
+    /// Stimule la création de nouveaux blocs
+    BlockCatalyst,
+    /// Contrôle la difficulté minière
+    HashDifficulty,
+    /// Influence les frais de transaction
+    TransactionFees,
+    /// Stimule la croissance du réseau
+    NetworkExpansion,
+    /// Protège contre les attaques
+    SecurityImmunity,
+    /// Optimise l'utilisation de l'espace mémoire
+    MemoryOptimization,
+    /// Régule les cycles de consensus
+    ConsensusHarmony,
+    /// Favorise les innovations dans le protocole
+    EvolutionaryPressure,
+    /// Maintient la liquidité dans l'écosystème
+    LiquidityFlow,
+    /// Gère l'équilibre énergétique et l'efficacité
+    EnergyEfficiency,
+    /// Répare les segments de chaîne endommagés
+    ChainRepair,
+    /// Optimise la synchronisation entre validateurs
+    ValidatorSynergy,
+    /// Adapte le système aux changements dimensionnels
+    HyperdimensionalAdaption,
+    /// Régule les mécanismes de récompense
+    RewardSignaling,
+    /// Protège contre la centralisation
+    DecentralizationGuardian,
+}
+
+/// Caractéristiques d'une hormone économique
+#[derive(Debug, Clone)]
+pub struct HormoneProfile {
+    /// Type d'hormone
+    pub hormone_type: HormoneType,
+    /// Niveau actuel (0.0-1.0)
+    pub level: f64,
+    /// Taux de production de base
+    pub base_production_rate: f64,
+    /// Taux de dégradation
+    pub degradation_rate: f64,
+    /// Demi-vie de l'hormone
+    pub half_life: Duration,
+    /// Seuil d'activation
+    pub activation_threshold: f64,
+    /// Seuil de saturation
+    pub saturation_threshold: f64,
+    /// Diffusion dans le système
+    pub diffusion_factor: f64,
+    /// Réceptivité des composants à cette hormone
+    pub receptor_affinity: HashMap<String, f64>,
+    /// Moment de la dernière modification
+    pub last_update: Instant,
+}
+
+impl HormoneProfile {
+    /// Crée un nouveau profil hormonal
+    pub fn new(hormone_type: HormoneType) -> Self {
+        let mut rng = thread_rng();
+        
+        // Configuration basée sur le type d'hormone économique
+        let (base_prod, degrad, half_life_blocks, diffusion) = match hormone_type {
+            HormoneType::MarketEquilibrium => (0.02, 0.01, 100.0, 0.8),
+            HormoneType::BlockCatalyst => (0.05, 0.04, 20.0, 0.9),
+            HormoneType::HashDifficulty => (0.01, 0.005, 200.0, 0.7),
+            HormoneType::TransactionFees => (0.03, 0.02, 50.0, 0.9),
+            HormoneType::NetworkExpansion => (0.005, 0.002, 500.0, 0.6),
+            HormoneType::SecurityImmunity => (0.02, 0.01, 100.0, 0.8),
+            HormoneType::MemoryOptimization => (0.01, 0.005, 150.0, 0.5),
+            HormoneType::ConsensusHarmony => (0.02, 0.01, 75.0, 0.7),
+            HormoneType::EvolutionaryPressure => (0.001, 0.0005, 1000.0, 0.3),
+            HormoneType::LiquidityFlow => (0.04, 0.03, 30.0, 0.9),
+            HormoneType::EnergyEfficiency => (0.015, 0.01, 120.0, 0.6),
+            HormoneType::ChainRepair => (0.01, 0.005, 60.0, 0.7),
+            HormoneType::ValidatorSynergy => (0.025, 0.015, 40.0, 0.8),
+            HormoneType::HyperdimensionalAdaption => (0.0005, 0.0002, 2000.0, 0.2),
+            HormoneType::RewardSignaling => (0.03, 0.02, 25.0, 0.9),
+            HormoneType::DecentralizationGuardian => (0.01, 0.005, 300.0, 0.8),
         };
         
-        // Coefficient de dégradation basé sur le temps écoulé (en secondes)
-        let degradation_coef = elapsed.as_secs_f64() / 60.0; // Normalisé par minute
+        // Niveau initial équilibré
+        let initial_level = match hormone_type {
+            HormoneType::BlockCatalyst | HormoneType::TransactionFees | HormoneType::LiquidityFlow => 
+                0.5 + rng.gen::<f64>() * 0.1,
+            HormoneType::MarketEquilibrium | HormoneType::ConsensusHarmony | 
+            HormoneType::ValidatorSynergy | HormoneType::RewardSignaling => 
+                0.4 + rng.gen::<f64>() * 0.1,
+            HormoneType::SecurityImmunity | HormoneType::DecentralizationGuardian => 
+                0.6 + rng.gen::<f64>() * 0.1,
+            _ => 0.3 + rng.gen::<f64>() * 0.1,
+        };
         
-        // 1. Mettre à jour les niveaux hormonaux basés sur les événements actifs
+        Self {
+            hormone_type,
+            level: initial_level.min(1.0),
+            base_production_rate: base_prod,
+            degradation_rate: degrad,
+            half_life: Duration::from_secs_f64(half_life_blocks * 15.0), // Convertir en secondes (blocs ~ 15s)
+            activation_threshold: 0.2,
+            saturation_threshold: 0.8,
+            diffusion_factor: diffusion,
+            receptor_affinity: HashMap::new(),
+            last_update: Instant::now(),
+        }
+    }
+    
+    /// Met à jour le niveau hormonal en fonction des conditions du marché
+    pub fn update(&self, blocks_elapsed: f64, market_conditions: &HashMap<String, f64>) -> f64 {
+        let mut delta = 0.0;
+        
+        // Production de base
+        delta += self.base_production_rate * blocks_elapsed;
+        
+        // Dégradation naturelle
+        delta -= self.level * self.degradation_rate * blocks_elapsed;
+        
+        // Influence des conditions du marché
+        for (condition, strength) in market_conditions {
+            if let Some(affinity) = self.receptor_affinity.get(condition) {
+                delta += strength * affinity * blocks_elapsed;
+            }
+        }
+        
+        // Calculer le nouveau niveau (mais ne pas modifier this.level directement)
+        (self.level + delta).max(0.0).min(1.0)
+    }
+    
+    /// Vérifie si l'hormone est active (au-dessus du seuil d'activation)
+    pub fn is_active(&self) -> bool {
+        self.level >= self.activation_threshold
+    }
+    
+    /// Vérifie si l'hormone est saturée
+    pub fn is_saturated(&self) -> bool {
+        self.level >= self.saturation_threshold
+    }
+    
+    /// Calcule la force d'influence de l'hormone
+    pub fn influence_strength(&self) -> f64 {
+        if self.level < self.activation_threshold {
+            0.0
+        } else {
+            let normalized = (self.level - self.activation_threshold) / 
+                            (self.saturation_threshold - self.activation_threshold);
+            normalized.min(1.0) * self.diffusion_factor
+        }
+    }
+}
+
+/// Récepteur crypto-hormonal pour les composants blockchain
+#[derive(Debug, Clone)]
+pub struct MarketReceptor {
+    /// Identifiant unique
+    pub id: String,
+    /// Type de récepteur
+    pub receptor_type: String,
+    /// Sensibilité aux différentes hormones (type, sensibilité)
+    pub sensitivity: HashMap<HormoneType, f64>,
+    /// Composant parent
+    pub parent_component: String,
+    /// Seuil d'activation
+    pub activation_threshold: f64,
+    /// État d'activation actuel
+    pub activated: bool,
+    /// Niveau d'activation (0.0-1.0)
+    pub activation_level: f64,
+    /// Durée de réfractaire après activation (en blocs)
+    pub refractory_period: u64,
+    /// Dernière activation (numéro de bloc)
+    pub last_activation_block: Option<u64>,
+}
+
+impl MarketReceptor {
+    /// Crée un nouveau récepteur
+    pub fn new(id: &str, receptor_type: &str, parent: &str) -> Self {
+        let mut rng = thread_rng();
+        
+        Self {
+            id: id.to_string(),
+            receptor_type: receptor_type.to_string(),
+            sensitivity: HashMap::new(),
+            parent_component: parent.to_string(),
+            activation_threshold: 0.3 + rng.gen::<f64>() * 0.2,
+            activated: false,
+            activation_level: 0.0,
+            refractory_period: rng.gen_range(5..30),
+            last_activation_block: None,
+        }
+    }
+    
+    /// Configure la sensibilité à une hormone
+    pub fn set_sensitivity(&mut self, hormone_type: HormoneType, sensitivity: f64) -> &mut Self {
+        self.sensitivity.insert(hormone_type, sensitivity.max(0.0).min(1.0));
+        self
+    }
+    
+    /// Répond aux niveaux hormonaux actuels
+    pub fn respond_to_hormone_levels(&mut self, current_block: u64, hormone_levels: &HashMap<HormoneType, f64>) -> bool {
+        if let Some(last) = self.last_activation_block {
+            if current_block - last < self.refractory_period {
+                return false; // Période réfractaire active
+            }
+        }
+        
+        // Calculer le niveau d'activation cumulé
+        let mut total_activation = 0.0;
+        let mut count = 0;
+        
+        for (hormone, level) in hormone_levels {
+            if let Some(sensitivity) = self.sensitivity.get(hormone) {
+                total_activation += level * sensitivity;
+                count += 1;
+            }
+        }
+        
+        if count > 0 {
+            self.activation_level = total_activation / count as f64;
+            
+            // Mettre à jour l'état d'activation
+            let was_activated = self.activated;
+            self.activated = self.activation_level >= self.activation_threshold;
+            
+            // Si vient juste d'être activé, enregistrer le bloc
+            if self.activated && !was_activated {
+                self.last_activation_block = Some(current_block);
+                return true;
+            }
+        }
+        
+        false
+    }
+}
+
+/// Statistiques du système hormonal
+#[derive(Debug, Clone)]
+pub struct HormonalSystemStats {
+    /// Nombre total d'hormones
+    pub hormone_count: usize,
+    /// Nombre total de récepteurs
+    pub receptor_count: usize,
+    /// Nombre de récepteurs actifs
+    pub active_receptors: usize,
+    /// Niveau moyen d'activité hormonale
+    pub average_hormone_level: f64,
+    /// Récepteur le plus actif
+    pub most_active_receptor: Option<String>,
+    /// Hormone la plus active
+    pub most_active_hormone: Option<HormoneType>,
+    /// Taux d'activité global (0.0-1.0)
+    pub global_activity_rate: f64,
+    /// Homéostasie du système (0.0-1.0, 1.0 = parfait équilibre)
+    pub homeostasis_index: f64,
+}
+
+/// Système hormonal principal pour la régulation de l'écosystème blockchain
+pub struct HormonalField {
+    /// Niveaux actuels de chaque hormone
+    hormone_profiles: DashMap<HormoneType, HormoneProfile>,
+    /// Récepteurs enregistrés dans le système
+    receptors: DashMap<String, MarketReceptor>,
+    /// Effets des hormones sur différents paramètres de la blockchain
+    hormone_effects: HashMap<HormoneType, HashMap<String, f64>>,
+    /// Interaction entre les hormones
+    hormone_interactions: HashMap<(HormoneType, HormoneType), f64>,
+    /// Facteurs externes impactant le système hormonal
+    external_factors: RwLock<HashMap<String, f64>>,
+    /// Données historiques (par bloc)
+    historical_data: RwLock<BTreeMap<u64, HashMap<HormoneType, f64>>>,
+    /// Référence au temps du système
+    bios_time: Arc<BiosTime>,
+    /// Source d'aléatoire
+    rng: Mutex<rand::rngs::ThreadRng>,
+}
+
+impl HormonalField {
+    /// Crée un nouveau système hormonal
+    pub fn new(bios_time: Arc<BiosTime>) -> Self {
+        let mut hormone_profiles = DashMap::new();
+        
+        // Initialiser toutes les hormones du système
+        for hormone_type in [
+            HormoneType::MarketEquilibrium,
+            HormoneType::BlockCatalyst,
+            HormoneType::HashDifficulty,
+            HormoneType::TransactionFees,
+            HormoneType::NetworkExpansion,
+            HormoneType::SecurityImmunity,
+            HormoneType::MemoryOptimization,
+            HormoneType::ConsensusHarmony,
+            HormoneType::EvolutionaryPressure,
+            HormoneType::LiquidityFlow,
+            HormoneType::EnergyEfficiency,
+            HormoneType::ChainRepair,
+            HormoneType::ValidatorSynergy,
+            HormoneType::HyperdimensionalAdaption,
+            HormoneType::RewardSignaling,
+            HormoneType::DecentralizationGuardian,
+        ].iter() {
+            hormone_profiles.insert(*hormone_type, HormoneProfile::new(*hormone_type));
+        }
+        
+        // Initialiser les effets hormonaux sur les paramètres blockchain
+        let mut hormone_effects = HashMap::new();
+        
+        // MarketEquilibrium affecte l'offre et la demande
+        let mut market_effects = HashMap::new();
+        market_effects.insert("token_supply_rate".to_string(), -0.3); // Niveau élevé réduit l'inflation
+        market_effects.insert("token_burn_rate".to_string(), 0.2);  // Niveau élevé augmente les burns
+        hormone_effects.insert(HormoneType::MarketEquilibrium, market_effects);
+        
+        // BlockCatalyst affecte la production de blocs
+        let mut block_effects = HashMap::new();
+        block_effects.insert("block_time".to_string(), -0.4); // Niveau élevé réduit le temps de bloc
+        block_effects.insert("block_reward".to_string(), 0.3); // Niveau élevé augmente les récompenses
+        hormone_effects.insert(HormoneType::BlockCatalyst, block_effects);
+        
+        // Interactions entre hormones
+        let mut interactions = HashMap::new();
+        
+        // MarketEquilibrium et BlockCatalyst s'inhibent mutuellement
+        interactions.insert((HormoneType::MarketEquilibrium, HormoneType::BlockCatalyst), -0.2);
+        interactions.insert((HormoneType::BlockCatalyst, HormoneType::MarketEquilibrium), -0.1);
+        
+        // HashDifficulty et TransactionFees s'amplifient
+        interactions.insert((HormoneType::HashDifficulty, HormoneType::TransactionFees), 0.3);
+        interactions.insert((HormoneType::TransactionFees, HormoneType::HashDifficulty), 0.2);
+        
+        Self {
+            hormone_profiles,
+            receptors: DashMap::new(),
+            hormone_effects,
+            hormone_interactions,
+            external_factors: RwLock::new(HashMap::new()),
+            historical_data: RwLock::new(BTreeMap::new()),
+            bios_time,
+            rng: Mutex::new(thread_rng()),
+        }
+    }
+    
+    /// Mise à jour du système hormonal
+    pub fn update(&self) {
+        // Mise à jour des niveaux hormonaux
+        let degradation_coef = 0.01;
         self.update_hormone_levels(degradation_coef);
         
-        // 2. Appliquer les interactions entre hormones
+        // Application des interactions entre hormones
         self.apply_hormone_interactions();
         
-        // 3. Nettoyer les événements expirés
+        // Nettoyage des événements expirés
         self.cleanup_expired_events();
         
-        // 4. Activer les récepteurs appropriés
+        // Activation des récepteurs
         self.activate_receptors();
         
-        // 5. Appliquer la régulation homéostatique
+        // Application de l'homéostasie
         self.apply_homeostasis();
     }
     
-    /// Met à jour les niveaux hormonaux en fonction des événements actifs et de la dégradation
+    /// Met à jour les niveaux hormonaux
     fn update_hormone_levels(&self, degradation_coef: f64) {
-        // Optimisation Windows: traitement par lots pour réduire les lock/unlock
-        let events = {
-            if let Ok(events) = self.active_events.read() {
-                events.iter().cloned().collect::<Vec<_>>()
-            } else {
-                return; // Impossible de verrouiller les événements
-            }
-        };
-        
-        // Calculer l'impact des événements actifs pour chaque hormone
-        let mut hormone_impacts: HashMap<HormoneType, f64> = HashMap::new();
-        
-        for event in &events {
-            // Vérifier si l'événement est toujours actif
-            if event.emission_time.elapsed() > event.duration {
-                continue;
-            }
-            
-            // Calculer le facteur d'efficacité basé sur le temps écoulé
-            // Le pic est atteint à 1/3 de la durée, puis décroît
-            let elapsed_ratio = event.emission_time.elapsed().as_secs_f64() / event.duration.as_secs_f64();
-            let efficiency_factor = if elapsed_ratio < 0.33 {
-                // Phase croissante
-                elapsed_ratio * 3.0
-            } else {
-                // Phase décroissante
-                1.0 - ((elapsed_ratio - 0.33) / 0.67)
-            };
-            
-            // Calculer l'impact de cet événement
-            let impact = event.intensity * event.radius * efficiency_factor;
-            
-            // Ajouter à l'impact total pour cette hormone
-            *hormone_impacts.entry(event.hormone_type).or_insert(0.0) += impact;
-        }
-        
-        // Utiliser DashMap pour paralléliser le traitement des hormones
-        // Optimisation spécifique pour machines multicœur sous Windows
-        self.hormone_levels.iter_mut().for_each(|mut entry| {
+        for mut entry in self.hormone_profiles.iter_mut() {
             let hormone_type = *entry.key();
-            let current_level = *entry.value();
+            let profile = entry.value_mut();
             
-            // Appliquer l'impact des événements
-            let impact = hormone_impacts.get(&hormone_type).copied().unwrap_or(0.0);
+            // Calculer le temps écoulé en "blocs"
+            let blocks_elapsed = profile.last_update.elapsed().as_secs_f64() / 15.0; // ~15s par bloc
             
-            // Appliquer la dégradation naturelle
-            let degradation_rate = self.degradation_rate.get(&hormone_type).copied().unwrap_or(0.05);
-            let degradation = current_level * degradation_rate * degradation_coef;
+            // Facteurs externes
+            let factors = self.external_factors.read().clone();
             
-            // Calculer le nouveau niveau (avec limites)
-            let mut new_level = current_level + impact - degradation;
-            new_level = new_level.max(0.0).min(1.0);
-            
-            // Mettre à jour
-            *entry.value_mut() = new_level;
-        });
+            // Calculer le nouveau niveau et le mettre à jour directement
+            profile.level = profile.update(blocks_elapsed, &factors);
+            profile.last_update = Instant::now();
+        }
     }
     
-    /// Applique les interactions entre les différentes hormones
+    /// Applique les interactions entre hormones
     fn apply_hormone_interactions(&self) {
-        // Créer une copie des niveaux actuels pour calculer les interactions
-        let current_levels: HashMap<HormoneType, f64> = self.hormone_levels.iter()
-            .map(|entry| (*entry.key(), *entry.value()))
-            .collect();
-        
-        // Calculer les impacts des interactions
-        let mut interactions_impact: HashMap<HormoneType, f64> = HashMap::new();
-        
-        for ((source, target), factor) in &self.hormone_interactions {
-            if let Some(&source_level) = current_levels.get(source) {
-                // L'impact sur la cible est proportionnel au niveau de la source et au facteur d'interaction
-                let impact = source_level * factor * 0.1; // coefficient de 0.1 pour tempérer les effets
-                
-                *interactions_impact.entry(*target).or_insert(0.0) += impact;
-            }
+        // Collecter tous les niveaux d'hormones actuels
+        let mut current_levels = HashMap::new();
+        for entry in self.hormone_profiles.iter() {
+            current_levels.insert(*entry.key(), entry.value().level);
         }
         
-        // Appliquer les impacts calculés
-        for (hormone, impact) in interactions_impact {
-            if let Some(mut level) = self.hormone_levels.get_mut(&hormone) {
-                *level = (*level + impact).max(0.0).min(1.0);
+        // Appliquer les effets d'interaction
+        for ((source, target), strength) in &self.hormone_interactions {
+            if let (Some(source_level), Some(mut target_profile)) = (
+                current_levels.get(source),
+                self.hormone_profiles.get_mut(target)
+            ) {
+                let influence = source_level * strength;
+                target_profile.level = (target_profile.level + influence * 0.1).max(0.0).min(1.0);
             }
         }
     }
     
-    /// Nettoie les événements hormonaux expirés
+    /// Nettoie les événements expirés
     fn cleanup_expired_events(&self) {
-        let now = Instant::now();
-        
-        if let Ok(mut events) = self.active_events.write() {
-            // Filtrer les événements expirés
-            events.retain(|event| {
-                now.duration_since(event.emission_time) <= event.duration
-            });
+        // Élaguer l'historique (ne garder que les 10 000 derniers blocs)
+        let mut history = self.historical_data.write();
+        while history.len() > 10_000 {
+            if let Some(first) = history.keys().next().cloned() {
+                history.remove(&first);
+            } else {
+                break;
+            }
         }
     }
     
-    /// Active les récepteurs hormonaux
+    /// Active les récepteurs en fonction des niveaux hormonaux actuels
     fn activate_receptors(&self) {
-        // Récupérer les niveaux hormonaux actuels
-        let hormone_levels: HashMap<HormoneType, f64> = self.hormone_levels.iter()
-            .map(|entry| (*entry.key(), *entry.value()))
-            .collect();
+        // Obtenir le bloc actuel (approximation)
+        let current_block = self.bios_time.age_in_blocks();
         
-        // Vérifier et activer les récepteurs
-        for receptor_entry in self.receptors.iter() {
-            let receptor = receptor_entry.value();
-            
-            // Vérifier si le récepteur est activé par au moins une hormone
-            let mut activated = false;
-            let mut max_activation = 0.0;
-            let mut activating_hormone = None;
-            let mut activation_data = HashMap::new();
-            
-            for hormone_type in &receptor.hormone_types {
-                if let Some(&level) = hormone_levels.get(hormone_type) {
-                    // Calculer l'activation effective en fonction de la sensibilité du récepteur
-                    let effective_level = level * receptor.sensitivity;
-                    
-                    // Si le niveau dépasse le seuil, le récepteur est activé
-                    if effective_level >= receptor.threshold && effective_level > max_activation {
-                        activated = true;
-                        max_activation = effective_level;
-                        activating_hormone = Some(*hormone_type);
-                    }
-                }
+        // Collecter les niveaux d'hormones actuels
+        let mut hormone_levels = HashMap::new();
+        for entry in self.hormone_profiles.iter() {
+            hormone_levels.insert(*entry.key(), entry.value().level);
+        }
+        
+        // Activer les récepteurs
+        for mut receptor in self.receptors.iter_mut() {
+            receptor.value_mut().respond_to_hormone_levels(current_block, &hormone_levels);
+        }
+    }
+    
+    /// Applique l'homéostasie au système
+    fn apply_homeostasis(&self) {
+        // Vérifier les hormones déséquilibrées
+        let mut imbalanced_hormones = Vec::new();
+        
+        for entry in self.hormone_profiles.iter() {
+            let profile = entry.value();
+            if profile.is_saturated() || profile.level < profile.activation_threshold * 0.5 {
+                imbalanced_hormones.push(*entry.key());
             }
-            
-            // Si le récepteur est activé, appeler son callback
-            if activated && activating_hormone.is_some() {
-                let hormone = activating_hormone.unwrap();
-                
-                // Chercher des données associées à cette hormone dans les événements actifs
-                if let Ok(events) = self.active_events.read() {
-                    for event in events.iter() {
-                        if event.hormone_type == hormone {
-                            // Ajouter les données de cet événement
-                            for (key, value) in &event.data {
-                                activation_data.insert(key.clone(), value.clone());
-                            }
-                        }
-                    }
-                }
-                
-                // Appeler le callback avec les données récoltées
-                if let Some(callback) = self.receptor_callbacks.get(&receptor.callback_id) {
-                    let action = callback(&hormone, max_activation, &activation_data);
-                    
-                    // Enregistrer l'action pour historique
-                    if let Ok(mut actions) = self.receptor_actions.write() {
-                        actions.push_back((receptor.id.clone(), action.clone(), Instant::now()));
-                        
-                        // Limiter la taille de l'historique
-                        while actions.len() > 100 {
-                            actions.pop_front();
-                        }
-                    }
+        }
+        
+        // Appliquer des corrections légères pour rétablir l'équilibre
+        for hormone_type in imbalanced_hormones {
+            if let Some(mut profile) = self.hormone_profiles.get_mut(&hormone_type) {
+                if profile.level > profile.saturation_threshold {
+                    // Réduire légèrement les hormones saturées
+                    profile.level = (profile.level - 0.05).max(0.0);
+                } else if profile.level < profile.activation_threshold * 0.5 {
+                    // Augmenter légèrement les hormones trop basses
+                    profile.level = (profile.level + 0.03).min(1.0);
                 }
             }
         }
     }
     
-    /// Applique la régulation homéostatique pour maintenir l'équilibre
-    fn apply_homeostasis(&self) {
-        // Pour chaque hormone, tendre progressivement vers son point d'équilibre
-        for entry in self.homeostatic_setpoints.iter() {
-            let hormone_type = *entry.key();
-            let setpoint = *entry.value();
+    /// Crée un récepteur hormonal pour un composant
+    pub fn create_receptor(&self, component_id: &str, receptor_type: &str) -> String {
+        let mut rng = self.rng.lock();
+        let id = format!("receptor_{}_{}", component_id, uuid::Uuid::new_v4().to_simple());
+        
+        let mut receptor = MarketReceptor::new(&id, receptor_type, component_id);
+        
+        // Configurer les sensibilités selon le type de récepteur
+        match receptor_type {
+            "validator" => {
+                receptor.set_sensitivity(HormoneType::BlockCatalyst, 0.8)
+                        .set_sensitivity(HormoneType::ConsensusHarmony, 0.7)
+                        .set_sensitivity(HormoneType::ValidatorSynergy, 0.9)
+                        .set_sensitivity(HormoneType::RewardSignaling, 0.8);
+            },
+            "transaction_manager" => {
+                receptor.set_sensitivity(HormoneType::TransactionFees, 0.9)
+                        .set_sensitivity(HormoneType::LiquidityFlow, 0.7)
+                        .set_sensitivity(HormoneType::MemoryOptimization, 0.6);
+            },
+            "security_monitor" => {
+                receptor.set_sensitivity(HormoneType::SecurityImmunity, 0.9)
+                        .set_sensitivity(HormoneType::DecentralizationGuardian, 0.8);
+            },
+            "chain_manager" => {
+                receptor.set_sensitivity(HormoneType::ChainRepair, 0.8)
+                        .set_sensitivity(HormoneType::NetworkExpansion, 0.7);
+            },
+            _ => {
+                // Sensibilités de base pour les types inconnus
+                receptor.set_sensitivity(HormoneType::MarketEquilibrium, 0.5)
+                        .set_sensitivity(HormoneType::EnergyEfficiency, 0.5);
+            }
+        }
+        
+        self.receptors.insert(id.clone(), receptor);
+        id
+    }
+    
+    /// Met à jour les niveaux hormonaux en fonction des conditions du marché
+    pub fn update_with_market_data(&self, current_block: u64, market_data: HashMap<String, f64>) {
+        // Mettre à jour les facteurs externes
+        {
+            let mut factors = self.external_factors.write();
+            for (key, value) in market_data {
+                factors.insert(key, value);
+            }
+        }
+        
+        // Mettre à jour chaque hormone
+        for hormone_entry in self.hormone_profiles.iter_mut() {
+            let hormone_type = *hormone_entry.key();
+            let profile = hormone_entry.value_mut();
             
-            if let Some(mut level) = self.hormone_levels.get_mut(&hormone_type) {
-                let current = *level;
-                
-                // Si l'écart est significatif, appliquer une correction légère
-                if (current - setpoint).abs() > 0.1 {
-                    let adjustment = if current > setpoint {
-                        -0.01 // Diminution progressive
-                    } else {
-                        0.01 // Augmentation progressive
-                    };
-                    
-                    *level = (current + adjustment).max(0.0).min(1.0);
+            // Calculer le temps écoulé en "blocs"
+            let blocks_elapsed = profile.last_update.elapsed().as_secs_f64() / 15.0; // ~15s par bloc
+            
+            // Mettre à jour le niveau hormonal
+            let factors = self.external_factors.read().clone();
+            profile.level = profile.update(blocks_elapsed, &factors);
+            profile.last_update = Instant::now();
+            
+            // Appliquer les interactions hormonales
+            for other_hormone in self.hormone_profiles.iter() {
+                if *other_hormone.key() != hormone_type {
+                    if let Some(interaction_strength) = self.hormone_interactions.get(&(
+                        *other_hormone.key(), hormone_type)) {
+                        
+                        let other_influence = other_hormone.value().influence_strength() * interaction_strength;
+                        profile.level = (profile.level + other_influence * blocks_elapsed).max(0.0).min(1.0);
+                    }
                 }
             }
         }
+        
+        // Enregistrer l'historique
+        let mut levels = HashMap::new();
+        for entry in self.hormone_profiles.iter() {
+            levels.insert(*entry.key(), entry.value().level);
+        }
+        
+        self.historical_data.write().insert(current_block, levels);
     }
     
     /// Obtient le niveau actuel d'une hormone
-    pub fn get_hormone_level(&self, hormone_type: &HormoneType) -> f64 {
-        self.hormone_levels.get(hormone_type).copied().unwrap_or(0.0)
+    pub fn get_hormone_level(&self, hormone_type: HormoneType) -> f64 {
+        self.hormone_profiles.get(&hormone_type)
+            .map(|profile| profile.level)
+            .unwrap_or(0.0)
     }
     
-    /// Modifie la sensibilité d'un récepteur
+    /// Ajuste la sensibilité d'un récepteur
     pub fn adjust_receptor_sensitivity(&self, receptor_id: &str, new_sensitivity: f64) -> Result<(), String> {
         if let Some(mut receptor) = self.receptors.get_mut(receptor_id) {
-            receptor.sensitivity = new_sensitivity.max(0.0).min(1.0);
+            for (_, sensitivity) in receptor.sensitivity.iter_mut() {
+                *sensitivity = (*sensitivity * new_sensitivity).max(0.0).min(1.0);
+            }
             Ok(())
         } else {
             Err(format!("Récepteur '{}' non trouvé", receptor_id))
@@ -233,607 +583,401 @@
     
     /// Obtient les statistiques du système hormonal
     pub fn get_stats(&self) -> HormonalSystemStats {
-        // Collecter les niveaux hormonaux
-        let hormone_levels: HashMap<HormoneType, f64> = self.hormone_levels.iter()
-            .map(|entry| (*entry.key(), *entry.value()))
-            .collect();
+        let hormone_count = self.hormone_profiles.len();
+        let receptor_count = self.receptors.len();
         
-        // Compter les événements actifs
-        let active_events = if let Ok(events) = self.active_events.read() {
-            events.len()
-        } else {
-            0
-        };
+        let mut active_receptors = 0;
+        let mut most_active_receptor = None;
+        let mut highest_activation = 0.0;
         
-        // Compter les récepteurs
-        let receptors_count = self.receptors.len();
+        for entry in self.receptors.iter() {
+            let receptor = entry.value();
+            if receptor.activated {
+                active_receptors += 1;
+                
+                if receptor.activation_level > highest_activation {
+                    highest_activation = receptor.activation_level;
+                    most_active_receptor = Some(receptor.id.clone());
+                }
+            }
+        }
         
-        // Calculer le niveau d'homéostasie (plus proche de 1.0 = plus stable)
-        let mut homeostasis = 0.0;
-        let mut hormone_count = 0;
+        let mut avg_level = 0.0;
+        let mut most_active_hormone = None;
+        let mut highest_level = 0.0;
         
-        for entry in self.homeostatic_setpoints.iter() {
-            let hormone_type = *entry.key();
-            let setpoint = *entry.value();
-            let current = self.get_hormone_level(&hormone_type);
+        for entry in self.hormone_profiles.iter() {
+            let profile = entry.value();
+            avg_level += profile.level;
             
-            // Plus la différence est faible, plus l'homéostasie est élevée
-            let difference = 1.0 - (current - setpoint).abs();
-            homeostasis += difference;
-            hormone_count += 1;
+            if profile.level > highest_level {
+                highest_level = profile.level;
+                most_active_hormone = Some(*entry.key());
+            }
         }
         
         if hormone_count > 0 {
-            homeostasis /= hormone_count as f64;
+            avg_level /= hormone_count as f64;
         }
         
-        // Calculer le niveau de stress (basé sur l'adrénaline et le cortisol)
-        let adrenaline = self.get_hormone_level(&HormoneType::Adrenaline);
-        let cortisol = self.get_hormone_level(&HormoneType::Cortisol);
-        let stress_level = (adrenaline * 0.6 + cortisol * 0.4).min(1.0);
+        // Calculer l'index d'homéostasie
+        let mut distance_from_optimal = 0.0;
+        let optimal_level = 0.5; // Niveau idéal au milieu de la plage
         
-        // Compter les actions récentes
-        let recent_actions = if let Ok(actions) = self.receptor_actions.read() {
-            let one_minute_ago = Instant::now() - Duration::from_secs(60);
-            actions.iter().filter(|(_, _, time)| *time >= one_minute_ago).count()
+        for entry in self.hormone_profiles.iter() {
+            let deviation = (entry.value().level - optimal_level).abs();
+            distance_from_optimal += deviation;
+        }
+        
+        let homeostasis_index = if hormone_count > 0 {
+            1.0 - (distance_from_optimal / hormone_count as f64 / optimal_level)
         } else {
-            0
+            0.0
         };
         
         HormonalSystemStats {
-            hormone_levels,
-            active_events,
-            receptors_count,
-            homeostasis,
-            stress_level,
-            recent_actions,
+            hormone_count,
+            receptor_count,
+            active_receptors,
+            average_hormone_level: avg_level,
+            most_active_receptor,
+            most_active_hormone,
+            global_activity_rate: active_receptors as f64 / receptor_count.max(1) as f64,
+            homeostasis_index: homeostasis_index.max(0.0).min(1.0),
         }
     }
     
-    /// Crée une configuration de récepteurs standard pour un organisme blockchain
+    /// Modifie le niveau d'une hormone
+    pub fn modify_hormone(&self, hormone_type: HormoneType, delta: f64) {
+        if let Some(mut profile) = self.hormone_profiles.get_mut(&hormone_type) {
+            profile.level = (profile.level + delta).max(0.0).min(1.0);
+        }
+    }
+    
+    /// Obtient l'historique des niveaux hormonaux sur une période
+    pub fn get_hormone_history(&self, hormone_type: HormoneType, blocks: u64) -> Vec<(u64, f64)> {
+        let history = self.historical_data.read();
+        let current_block = *history.keys().next_back().unwrap_or(&0);
+        let start_block = if current_block > blocks { current_block - blocks } else { 0 };
+        
+        history.range(start_block..)
+            .filter_map(|(block, levels)| {
+                levels.get(&hormone_type).map(|level| (*block, *level))
+            })
+            .collect()
+    }
+    
+    /// Configure les récepteurs standard pour l'organisme
     pub fn setup_standard_receptors(&self, organism: Arc<QuantumOrganism>) -> Result<(), String> {
-        // Récepteur d'adrénaline pour réaction d'urgence
-        self.register_receptor(
-            "adrenaline_emergency",
-            &[HormoneType::Adrenaline],
-            1.0,
-            0.7,
-            "immune_system",
-            Box::new(move |hormone_type, intensity, data| {
-                // Activation du mode défensif d'urgence
-                if *hormone_type == HormoneType::Adrenaline && intensity > 0.7 {
-                    ReceptorAction::Activate {
-                        component: "emergency_defense_mode".to_string(),
-                        parameters: {
-                            let mut params = HashMap::new();
-                            params.insert("intensity".to_string(), intensity.to_string().into_bytes());
-                            params.insert("source".to_string(), b"hormone_trigger".to_vec());
-                            params
-                        },
-                        duration: Duration::from_secs(60),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // 1. Récepteurs pour les validateurs
+        for i in 0..5 {
+            let validator_id = format!("validator_{}", i);
+            self.create_receptor(&validator_id, "validator");
+        }
         
-        // Récepteur de cortisol pour réponse au stress prolongé
-        self.register_receptor(
-            "cortisol_stress_response",
-            &[HormoneType::Cortisol],
-            0.9,
-            0.6,
-            "resource_manager",
-            Box::new(|hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::Cortisol && intensity > 0.6 {
-                    // Réduire l'utilisation des ressources non-essentielles
-                    ReceptorAction::ModifyParameter {
-                        component: "resource_allocator".to_string(),
-                        parameter: "non_essential_allocation".to_string(),
-                        value: (0.5 - intensity * 0.3).max(0.2).to_string().into_bytes(),
-                        duration: Some(Duration::from_secs(300)),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // 2. Récepteurs pour le gestionnaire de transactions
+        self.create_receptor("tx_manager_main", "transaction_manager");
+        self.create_receptor("tx_manager_backup", "transaction_manager");
         
-        // Récepteur de dopamine pour apprentissage et motivation
-        self.register_receptor(
-            "dopamine_learning",
-            &[HormoneType::Dopamine],
-            1.0,
-            0.5,
-            "neural_network",
-            Box::new(|hormone_type, intensity, data| {
-                if *hormone_type == HormoneType::Dopamine && intensity > 0.5 {
-                    // Augmenter le taux d'apprentissage
-                    ReceptorAction::ModifyParameter {
-                        component: "learning_system".to_string(),
-                        parameter: "learning_rate".to_string(),
-                        value: (0.02 + intensity * 0.03).to_string().into_bytes(),
-                        duration: Some(Duration::from_secs(180)),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // 3. Récepteurs pour le moniteur de sécurité
+        self.create_receptor("security_main", "security_monitor");
         
-        // Récepteur de sérotonine pour régulation de l'humeur et stabilité
-        self.register_receptor(
-            "serotonin_stability",
-            &[HormoneType::Serotonin],
-            0.8,
-            0.4,
-            "emotional_regulator",
-            Box::new(|hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::Serotonin && intensity > 0.6 {
-                    // Augmenter la stabilité émotionnelle
-                    ReceptorAction::ModifyParameter {
-                        component: "emotional_regulator".to_string(),
-                        parameter: "stability_factor".to_string(),
-                        value: (0.5 + intensity * 0.4).to_string().into_bytes(),
-                        duration: None, // Persistant
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // 4. Récepteurs pour les gestionnaires de chaîne
+        self.create_receptor("chain_manager_primary", "chain_manager");
+        self.create_receptor("chain_manager_secondary", "chain_manager");
         
-        // Récepteur de mélatonine pour le cycle circadien
-        self.register_receptor(
-            "melatonin_sleep_cycle",
-            &[HormoneType::Melatonin],
-            0.9,
-            0.6,
-            "circadian_regulator",
-            Box::new(|hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::Melatonin && intensity > 0.7 {
-                    // Activer le mode rêve/repos
-                    ReceptorAction::Activate {
-                        component: "dream_mode".to_string(),
-                        parameters: {
-                            let mut params = HashMap::new();
-                            params.insert("intensity".to_string(), intensity.to_string().into_bytes());
-                            params
-                        },
-                        duration: Duration::from_secs(1800), // 30 minutes
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // 5. Récepteurs métaboliques (gestion des ressources)
+        self.create_receptor("energy_manager", "resource_manager");
+        self.create_receptor("storage_optimizer", "resource_manager");
         
-        // Récepteur d'ocytocine pour confiance et connexions
-        self.register_receptor(
-            "oxytocin_trust",
-            &[HormoneType::Oxytocin],
-            0.8,
-            0.5,
-            "social_module",
-            Box::new(|hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::Oxytocin && intensity > 0.6 {
-                    // Augmenter le niveau de confiance pour les interactions
-                    ReceptorAction::ModifyParameter {
-                        component: "trust_evaluator".to_string(),
-                        parameter: "base_trust_level".to_string(),
-                        value: (0.3 + intensity * 0.3).to_string().into_bytes(),
-                        duration: Some(Duration::from_secs(600)),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // 6. Récepteurs cognitifs (pour la partie conscience)
+        self.create_receptor("learning_center", "cognitive");
+        self.create_receptor("decision_core", "cognitive");
         
-        // Récepteur d'hormone de croissance pour régénération
-        self.register_receptor(
-            "growth_hormone_regeneration",
-            &[HormoneType::GrowthHormone],
-            1.0,
-            0.4,
-            "regenerative_layer",
-            Box::new(move |hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::GrowthHormone && intensity > 0.5 {
-                    ReceptorAction::ModifyParameter {
-                        component: "regenerative_layer".to_string(),
-                        parameter: "regeneration_rate".to_string(),
-                        value: (0.05 + intensity * 0.10).to_string().into_bytes(),
-                        duration: Some(Duration::from_secs(3600)),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // 7. Récepteurs adaptatifs (pour l'adaptation du réseau)
+        self.create_receptor("network_topology", "adaptive");
+        self.create_receptor("consensus_mechanism", "adaptive");
+        
+        // 8. Récepteurs immunitaires (défense contre les attaques)
+        self.create_receptor("attack_detector", "immune");
+        self.create_receptor("response_coordinator", "immune");
+        
+        // 9. Récepteurs métaboliques (économie interne)
+        self.create_receptor("fee_regulator", "metabolic");
+        self.create_receptor("reward_distributor", "metabolic");
+        
+        // 10. Récepteurs sensoriels (surveillance du réseau)
+        self.create_receptor("network_monitor", "sensory");
+        self.create_receptor("mempool_analyzer", "sensory");
+        
+        // 11. Récepteurs de croissance (scaling et optimisation)
+        self.create_receptor("scaling_optimizer", "growth");
+        self.create_receptor("shard_coordinator", "growth");
+        
+        // 12. Récepteurs d'équilibre (stabilité globale)
+        self.create_receptor("equilibrium_maintainer", "balance");
         
         Ok(())
     }
     
-    /// Configure les réactions en chaîne hormonales pour des dynamiques complexes
+    /// Configure les chaînes de réaction hormonales
     pub fn setup_hormone_chains(&self) -> Result<(), String> {
-        // Récepteur qui émet du cortisol en réponse à l'adrénaline
-        // (Réaction de stress secondaire)
-        self.register_receptor(
-            "adrenaline_to_cortisol_chain",
-            &[HormoneType::Adrenaline],
-            0.9,
-            0.7,
-            "hormone_chain",
-            Box::new(|hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::Adrenaline && intensity > 0.7 {
-                    ReceptorAction::EmitHormone {
-                        hormone_type: HormoneType::Cortisol,
-                        intensity: intensity * 0.8,
-                        radius: 0.9,
-                        duration: Duration::from_secs(300),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // Chaîne de réaction 1: Cascade de défense
+        // Lorsque SecurityImmunity augmente, cela déclenche ConsensusHarmony et HashDifficulty
+        self.hormone_interactions.insert(
+            (HormoneType::SecurityImmunity, HormoneType::ConsensusHarmony),
+            0.4
+        );
         
-        // Récepteur qui émet de la dopamine en réponse à l'ocytocine
-        // (Renforcement positif des interactions sociales)
-        self.register_receptor(
-            "oxytocin_to_dopamine_chain",
-            &[HormoneType::Oxytocin],
-            0.8,
-            0.6,
-            "hormone_chain",
-            Box::new(|hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::Oxytocin && intensity > 0.6 {
-                    ReceptorAction::EmitHormone {
-                        hormone_type: HormoneType::Dopamine,
-                        intensity: intensity * 0.7,
-                        radius: 0.8,
-                        duration: Duration::from_secs(120),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        self.hormone_interactions.insert(
+            (HormoneType::SecurityImmunity, HormoneType::HashDifficulty),
+            0.5
+        );
         
-        // Récepteur qui émet de la mélatonine en réponse à la sérotonine
-        // (Préparation au cycle de repos)
-        self.register_receptor(
-            "serotonin_to_melatonin_chain",
-            &[HormoneType::Serotonin],
-            0.7,
-            0.7,
-            "hormone_chain",
-            Box::new(|hormone_type, intensity, _data| {
-                if *hormone_type == HormoneType::Serotonin && intensity > 0.7 {
-                    ReceptorAction::EmitHormone {
-                        hormone_type: HormoneType::Melatonin,
-                        intensity: intensity * 0.6,
-                        radius: 0.7,
-                        duration: Duration::from_secs(1200),
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        self.hormone_interactions.insert(
+            (HormoneType::ConsensusHarmony, HormoneType::ValidatorSynergy),
+            0.3
+        );
         
-        // Récepteur qui émet des endorphines en réponse à un stress prolongé
-        // (Mécanisme de compensation)
-        self.register_receptor(
-            "cortisol_to_endorphin_chain",
-            &[HormoneType::Cortisol],
-            0.7,
-            0.8,
-            "hormone_chain",
-            Box::new(|hormone_type, intensity, data| {
-                if *hormone_type == HormoneType::Cortisol && intensity > 0.8 {
-                    // Vérifier si le stress dure depuis longtemps
-                    let duration_bytes = data.get("duration_secs").unwrap_or(&vec![]);
-                    let duration = String::from_utf8_lossy(duration_bytes)
-                        .parse::<u64>()
-                        .unwrap_or(0);
-                        
-                    if duration > 300 { // Plus de 5 minutes
-                        ReceptorAction::EmitHormone {
-                            hormone_type: HormoneType::Endorphin,
-                            intensity: 0.6,
-                            radius: 0.8,
-                            duration: Duration::from_secs(180),
-                        }
-                    } else {
-                        ReceptorAction::None
-                    }
-                } else {
-                    ReceptorAction::None
-                }
-            }),
-        )?;
+        // Chaîne de réaction 2: Cycle économique
+        // MarketEquilibrium influence LiquidityFlow et TransactionFees
+        self.hormone_interactions.insert(
+            (HormoneType::MarketEquilibrium, HormoneType::LiquidityFlow),
+            0.35
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::LiquidityFlow, HormoneType::TransactionFees),
+            -0.25 // Effet négatif: plus de liquidité = frais plus bas
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::TransactionFees, HormoneType::RewardSignaling),
+            0.4
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::RewardSignaling, HormoneType::BlockCatalyst),
+            0.3
+        );
+        
+        // Chaîne de réaction 3: Cycle d'expansion
+        self.hormone_interactions.insert(
+            (HormoneType::NetworkExpansion, HormoneType::MemoryOptimization),
+            0.2
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::MemoryOptimization, HormoneType::EnergyEfficiency),
+            0.3
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::NetworkExpansion, HormoneType::DecentralizationGuardian),
+            0.4
+        );
+        
+        // Chaîne de réaction 4: Cycle de réparation et maintenance
+        self.hormone_interactions.insert(
+            (HormoneType::ChainRepair, HormoneType::EnergyEfficiency),
+            -0.2 // La réparation consomme de l'énergie
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::ChainRepair, HormoneType::ValidatorSynergy),
+            0.3
+        );
+        
+        // Chaîne de réaction 5: Cycle d'innovation
+        self.hormone_interactions.insert(
+            (HormoneType::EvolutionaryPressure, HormoneType::HyperdimensionalAdaption),
+            0.5
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::HyperdimensionalAdaption, HormoneType::NetworkExpansion),
+            0.3
+        );
+        
+        // Effets de rétroaction négative pour stabilisation (homéostasie)
+        self.hormone_interactions.insert(
+            (HormoneType::BlockCatalyst, HormoneType::HashDifficulty),
+            0.4 // Plus de blocs = difficulté plus élevée
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::TransactionFees, HormoneType::LiquidityFlow),
+            -0.3 // Frais élevés réduisent la liquidité
+        );
+        
+        self.hormone_interactions.insert(
+            (HormoneType::HashDifficulty, HormoneType::EnergyEfficiency),
+            -0.4 // Difficulté élevée réduit l'efficacité énergétique
+        );
         
         Ok(())
     }
     
-    /// Méthode optimisée pour Windows pour réinitialiser l'équilibre hormonal
-    #[cfg(target_os = "windows")]
+    /// Réinitialise l'équilibre hormonal à des niveaux normaux
     pub fn reset_hormone_balance(&self) -> Result<(), String> {
-        // Utiliser une API optimisée pour Windows pour synchroniser les opérations
-        use windows_sys::Win32::System::Threading::{
-            CreateEventW, SetEvent, WaitForSingleObject,
-            WAIT_OBJECT_0,
-        };
+        // Niveaux d'équilibre pour chaque hormone
+        let balanced_levels: HashMap<HormoneType, f64> = [
+            (HormoneType::MarketEquilibrium, 0.5),
+            (HormoneType::BlockCatalyst, 0.4),
+            (HormoneType::HashDifficulty, 0.5),
+            (HormoneType::TransactionFees, 0.4),
+            (HormoneType::NetworkExpansion, 0.3),
+            (HormoneType::SecurityImmunity, 0.6),
+            (HormoneType::MemoryOptimization, 0.5),
+            (HormoneType::ConsensusHarmony, 0.5),
+            (HormoneType::EvolutionaryPressure, 0.2),
+            (HormoneType::LiquidityFlow, 0.5),
+            (HormoneType::EnergyEfficiency, 0.5),
+            (HormoneType::ChainRepair, 0.3),
+            (HormoneType::ValidatorSynergy, 0.4),
+            (HormoneType::HyperdimensionalAdaption, 0.1),
+            (HormoneType::RewardSignaling, 0.5),
+            (HormoneType::DecentralizationGuardian, 0.6),
+        ].iter().cloned().collect();
         
-        unsafe {
-            // Créer un événement pour synchroniser l'opération
-            let event = CreateEventW(std::ptr::null_mut(), 1, 0, std::ptr::null());
-            if event == 0 {
-                return Err("Échec de création de l'événement Windows".to_string());
-            }
-            
-            // Réinitialiser chaque hormone à son point d'équilibre
-            for entry in self.homeostatic_setpoints.iter() {
-                let hormone_type = *entry.key();
-                let setpoint = *entry.value();
+        // Ajuster progressivement les niveaux vers l'équilibre
+        for (hormone_type, target_level) in &balanced_levels {
+            if let Some(mut profile) = self.hormone_profiles.get_mut(hormone_type) {
+                let current = profile.level;
+                let delta = target_level - current;
                 
-                self.hormone_levels.insert(hormone_type, setpoint);
+                // Transition progressive (50% du chemin vers l'équilibre)
+                profile.level = current + delta * 0.5;
             }
-            
-            // Vider les événements hormonaux actifs
-            if let Ok(mut events) = self.active_events.write() {
-                events.clear();
-            } else {
-                return Err("Impossible de verrouiller les événements actifs".to_string());
-            }
-            
-            // Signaler que l'opération est terminée
-            SetEvent(event);
-            
-            // Attendre que l'événement soit signalé (pour s'assurer que toutes les opérations sont terminées)
-            WaitForSingleObject(event, 1000);
-            
-            Ok(())
-        }
-    }
-    
-    /// Version non-Windows de la réinitialisation de l'équilibre hormonal
-    #[cfg(not(target_os = "windows"))]
-    pub fn reset_hormone_balance(&self) -> Result<(), String> {
-        // Réinitialiser chaque hormone à son point d'équilibre
-        for entry in self.homeostatic_setpoints.iter() {
-            let hormone_type = *entry.key();
-            let setpoint = *entry.value();
-            
-            self.hormone_levels.insert(hormone_type, setpoint);
         }
         
-        // Vider les événements hormonaux actifs
-        if let Ok(mut events) = self.active_events.write() {
-            events.clear();
-        } else {
-            return Err("Impossible de verrouiller les événements actifs".to_string());
+        // Enregistrer l'événement de réinitialisation
+        let current_block = self.bios_time.age_in_blocks();
+        
+        // Créer un snapshot des niveaux après réinitialisation
+        let mut levels = HashMap::new();
+        for entry in self.hormone_profiles.iter() {
+            levels.insert(*entry.key(), entry.value().level);
         }
+        
+        self.historical_data.write().insert(current_block, levels);
         
         Ok(())
     }
     
-    /// Méthode pour simuler un état de stress dans l'organisme
+    /// Simule une réponse au stress du système
     pub fn simulate_stress_response(&self, intensity: f64, duration_secs: u64) -> Result<(), String> {
-        // Vérification des paramètres
         if intensity <= 0.0 || intensity > 1.0 {
-            return Err("L'intensité doit être entre 0.0 et 1.0".to_string());
+            return Err("L'intensité doit être comprise entre 0.0 et 1.0".to_string());
         }
         
-        if duration_secs == 0 {
-            return Err("La durée doit être positive".to_string());
+        // Augmenter les hormones de stress
+        if let Some(mut security) = self.hormone_profiles.get_mut(&HormoneType::SecurityImmunity) {
+            security.level = (security.level + intensity * 0.6).min(1.0);
         }
         
-        // Données contextuelles
-        let mut data = HashMap::new();
-        data.insert("simulation".to_string(), b"true".to_vec());
-        data.insert("duration_secs".to_string(), duration_secs.to_string().into_bytes());
-        
-        // Cascade hormonale de stress
-        
-        // 1. Émission d'adrénaline (réaction immédiate)
-        self.emit_hormone(
-            HormoneType::Adrenaline,
-            "stress_simulation",
-            intensity,
-            1.0,
-            0.8,
-            data.clone(),
-        )?;
-        
-        // 2. Émission de cortisol (réaction secondaire)
-        self.emit_hormone(
-            HormoneType::Cortisol,
-            "stress_simulation",
-            intensity * 0.8,
-            1.0,
-            1.5,
-            data.clone(),
-        )?;
-        
-        // 3. Diminution de la sérotonine (effet négatif du stress)
-        // Cette émission spéciale crée un "trou" hormonal pour la sérotonine
-        let mut serotonin_data = data.clone();
-        serotonin_data.insert("decrease".to_string(), b"true".to_vec());
-        
-        let current_serotonin = self.get_hormone_level(&HormoneType::Serotonin);
-        if current_serotonin > 0.2 {
-            self.hormone_levels.insert(HormoneType::Serotonin, current_serotonin * (1.0 - intensity * 0.5));
+        if let Some(mut hash_diff) = self.hormone_profiles.get_mut(&HormoneType::HashDifficulty) {
+            hash_diff.level = (hash_diff.level + intensity * 0.4).min(1.0);
         }
         
-        // 4. Augmentation de la noradrénaline (vigilance accrue)
-        self.emit_hormone(
-            HormoneType::Norepinephrine,
-            "stress_simulation",
-            intensity * 0.7,
-            0.9,
-            1.0,
-            data,
-        )?;
+        if let Some(mut energy) = self.hormone_profiles.get_mut(&HormoneType::EnergyEfficiency) {
+            // Diminuer l'efficacité énergétique (consommation accrue)
+            energy.level = (energy.level - intensity * 0.3).max(0.1);
+        }
+        
+        if let Some(mut tx_fees) = self.hormone_profiles.get_mut(&HormoneType::TransactionFees) {
+            // Augmenter les frais de transaction
+            tx_fees.level = (tx_fees.level + intensity * 0.5).min(1.0);
+        }
+        
+        if let Some(mut liquidity) = self.hormone_profiles.get_mut(&HormoneType::LiquidityFlow) {
+            // Réduire la liquidité
+            liquidity.level = (liquidity.level - intensity * 0.4).max(0.1);
+        }
+        
+        // Enregistrer l'événement de stress dans l'historique
+        let current_block = self.bios_time.age_in_blocks();
+        
+        // Créer un snapshot des niveaux après le stress
+        let mut levels = HashMap::new();
+        for entry in self.hormone_profiles.iter() {
+            levels.insert(*entry.key(), entry.value().level);
+        }
+        
+        self.historical_data.write().insert(current_block, levels);
+        
+        // Configurer le facteur externe de stress
+        {
+            let mut factors = self.external_factors.write();
+            factors.insert("system_stress".to_string(), intensity);
+        }
         
         Ok(())
     }
     
-    /// Méthode pour simuler une réponse de bien-être/calme
+    /// Simule une réponse de bien-être du système (opposée au stress)
     pub fn simulate_wellbeing_response(&self, intensity: f64) -> Result<(), String> {
-        // Vérification des paramètres
         if intensity <= 0.0 || intensity > 1.0 {
-            return Err("L'intensité doit être entre 0.0 et 1.0".to_string());
+            return Err("L'intensité doit être comprise entre 0.0 et 1.0".to_string());
         }
         
-        // Données contextuelles
-        let mut data = HashMap::new();
-        data.insert("simulation".to_string(), b"true".to_vec());
-        data.insert("wellbeing".to_string(), b"true".to_vec());
+        // Augmenter les hormones positives
+        if let Some(mut consensus) = self.hormone_profiles.get_mut(&HormoneType::ConsensusHarmony) {
+            consensus.level = (consensus.level + intensity * 0.5).min(1.0);
+        }
         
-        // Cascade hormonale de bien-être
+        if let Some(mut validators) = self.hormone_profiles.get_mut(&HormoneType::ValidatorSynergy) {
+            validators.level = (validators.level + intensity * 0.4).min(1.0);
+        }
         
-        // 1. Émission de dopamine (récompense/plaisir)
-        self.emit_hormone(
-            HormoneType::Dopamine,
-            "wellbeing_simulation",
-            intensity * 0.8,
-            0.9,
-            1.0,
-            data.clone(),
-        )?;
+        if let Some(mut energy) = self.hormone_profiles.get_mut(&HormoneType::EnergyEfficiency) {
+            // Améliorer l'efficacité énergétique
+            energy.level = (energy.level + intensity * 0.4).min(1.0);
+        }
         
-        // 2. Émission de sérotonine (stabilité/bien-être)
-        self.emit_hormone(
-            HormoneType::Serotonin,
-            "wellbeing_simulation",
-            intensity,
-            0.9,
-            1.2,
-            data.clone(),
-        )?;
+        if let Some(mut market) = self.hormone_profiles.get_mut(&HormoneType::MarketEquilibrium) {
+            // Améliorer l'équilibre du marché
+            market.level = (market.level + intensity * 0.3).min(1.0);
+        }
         
-        // 3. Émission d'ocytocine (confiance/attachement)
-        self.emit_hormone(
-            HormoneType::Oxytocin,
-            "wellbeing_simulation",
-            intensity * 0.7,
-            0.8,
-            1.0,
-            data.clone(),
-        )?;
+        if let Some(mut liquidity) = self.hormone_profiles.get_mut(&HormoneType::LiquidityFlow) {
+            // Augmenter la liquidité
+            liquidity.level = (liquidity.level + intensity * 0.5).min(1.0);
+        }
         
-        // 4. Émission d'endorphines (bien-être physique)
-        self.emit_hormone(
-            HormoneType::Endorphin,
-            "wellbeing_simulation",
-            intensity * 0.6,
-            0.7,
-            0.9,
-            data,
-        )?;
+        if let Some(mut tx_fees) = self.hormone_profiles.get_mut(&HormoneType::TransactionFees) {
+            // Réduire les frais de transaction
+            tx_fees.level = (tx_fees.level - intensity * 0.2).max(0.1);
+        }
         
-        // 5. Réduction des hormones de stress
-        let current_adrenaline = self.get_hormone_level(&HormoneType::Adrenaline);
-        let current_cortisol = self.get_hormone_level(&HormoneType::Cortisol);
+        // Enregistrer l'événement de bien-être dans l'historique
+        let current_block = self.bios_time.age_in_blocks();
         
-        self.hormone_levels.insert(HormoneType::Adrenaline, current_adrenaline * (1.0 - intensity * 0.3));
-        self.hormone_levels.insert(HormoneType::Cortisol, current_cortisol * (1.0 - intensity * 0.2));
+        // Créer un snapshot des niveaux après le bien-être
+        let mut levels = HashMap::new();
+        for entry in self.hormone_profiles.iter() {
+            levels.insert(*entry.key(), entry.value().level);
+        }
+        
+        self.historical_data.write().insert(current_block, levels);
+        
+        // Configurer le facteur externe de bien-être
+        {
+            let mut factors = self.external_factors.write();
+            factors.insert("system_wellbeing".to_string(), intensity);
+            // Réduire le stress s'il existe
+            if factors.contains_key("system_stress") {
+                factors.insert("system_stress".to_string(), 
+                              (factors.get("system_stress").unwrap_or(&0.0) * 0.5).max(0.0));
+            }
+        }
         
         Ok(())
-    }
-
-impl Default for HormonalField {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_hormone_emission() {
-        let field = HormonalField::new();
-        
-        // Émettre de l'adrénaline
-        let result = field.emit_hormone(
-            HormoneType::Adrenaline,
-            "test",
-            0.8,
-            1.0,
-            1.0,
-            HashMap::new(),
-        );
-        
-        assert!(result.is_ok());
-        
-        // Vérifier que le niveau a été mis à jour
-        let level = field.get_hormone_level(&HormoneType::Adrenaline);
-        assert!(level > 0.0);
-    }
-    
-    #[test]
-    fn test_receptor_activation() {
-        let field = HormonalField::new();
-        let activation_detected = Arc::new(Mutex::new(false));
-        
-        let activation_detected_clone = activation_detected.clone();
-        
-        // Enregistrer un récepteur de test
-        field.register_receptor(
-            "test_receptor",
-            &[HormoneType::Dopamine],
-            1.0,
-            0.5,
-            "test_owner",
-            Box::new(move |_, _, _| {
-                *activation_detected_clone.lock() = true;
-                ReceptorAction::None
-            }),
-        ).unwrap();
-        
-        // Émettre de la dopamine au-dessus du seuil
-        field.emit_hormone(
-            HormoneType::Dopamine,
-            "test",
-            0.8,
-            1.0,
-            1.0,
-            HashMap::new(),
-        ).unwrap();
-        
-        // Activer les récepteurs
-        field.activate_receptors();
-        
-        // Vérifier que le récepteur a été activé
-        assert!(*activation_detected.lock());
-    }
-    
-    #[test]
-    fn test_hormone_degradation() {
-        let field = HormonalField::new();
-        
-        // Émettre de la dopamine
-        field.emit_hormone(
-            HormoneType::Dopamine,
-            "test",
-            1.0,
-            1.0,
-            1.0,
-            HashMap::new(),
-        ).unwrap();
-        
-        let initial_level = field.get_hormone_level(&HormoneType::Dopamine);
-        
-        // Simuler une mise à jour avec un coefficient de dégradation
-        field.update_hormone_levels(0.5);
-        
-        // Vérifier que le niveau a diminué
-        let new_level = field.get_hormone_level(&HormoneType::Dopamine);
-        assert!(new_level < initial_level);
+impl Default for HormonalField {
+    fn default() -> Self {
+        Self::new(Arc::new(BiosTime::new()))
     }
 }
