@@ -9,6 +9,16 @@ keywords = ["blockchain", "biosphere", "ai", "neural", "crypto"]
 categories = ["cryptography::cryptocurrencies", "algorithms", "network-programming"]
 
 [dependencies]
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.10"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
+parking_lot = "0.12"
+
 # Core Rust libs
 anyhow = "1.0"
 log = "0.4"
